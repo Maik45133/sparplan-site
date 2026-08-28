@@ -1,16 +1,15 @@
-/* Sparplan OS — liest data/latest.json zur Laufzeit und baut daraus alle Ansichten.
-   Kein Build, kein Framework, keine externe Abhaengigkeit ausser holo-core.js. */
+/* Sparplan OS. Liest data/latest.json zur Laufzeit und baut daraus alle Ansichten.
+   Kein Build, kein Framework, keine externe Abhängigkeit außer holo-core.js. */
 (() => {
 'use strict';
 
 const CFG = {
-  repo: 'Maik45133/sparplan',
-  workflow: 'wochenlauf.yml',
-  data: 'data/latest.json',
-  depot: 'data/depot.enc'
+  repo:'Maik45133/sparplan-site',
+  data:'data/latest.json',
+  depot:'data/depot.enc'
 };
 
-/* ─────────────── Werkzeug ─────────────── */
+/* ───────── Werkzeug ───────── */
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
@@ -18,13 +17,14 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
 
 const nf = (v, d = 1) => v === null || v === undefined || Number.isNaN(v)
   ? '–' : Number(v).toLocaleString('de-DE', {minimumFractionDigits:d, maximumFractionDigits:d});
-const pct  = (v, d = 1) => v === null || v === undefined ? '–' : (v > 0 ? '+' : '') + nf(v, d) + ' %';
+const pct  = (v, d = 1) => v === null || v === undefined ? '–' : (v > 0 ? '+' : '') + nf(v, d) + '\u202f%';
 const sign = v => v > 0.0001 ? 'up' : v < -0.0001 ? 'down' : '';
 
 function mrd(v){
   if (v == null) return '–';
-  if (v >= 1e9)  return nf(v / 1e9, 1) + ' Mrd';
-  if (v >= 1e6)  return nf(v / 1e6, 0) + ' Mio';
+  if (v >= 1e12) return nf(v / 1e12, 2) + '\u202fBio';
+  if (v >= 1e9)  return nf(v / 1e9, 1) + '\u202fMrd';
+  if (v >= 1e6)  return nf(v / 1e6, 0) + '\u202fMio';
   return nf(v, 0);
 }
 function datum(s){
@@ -33,57 +33,70 @@ function datum(s){
   if (Number.isNaN(+d)) return String(s).slice(0, 10);
   return d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric'});
 }
-function datumZeit(s){
-  const d = new Date(s);
-  if (Number.isNaN(+d)) return String(s);
-  return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) + ', ' +
-         d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) + ' Uhr';
-}
 const alterTage = s => Math.floor((Date.now() - new Date(s)) / 864e5);
 
 const KOMPONENTE = {
-  revision_momentum:   'Analystenrevisionen',
-  growth_acceleration: 'Wachstumsbeschleunigung',
-  margin_trend:        'Margentrend',
-  fcf_trend:           'Cashflow-Trend',
-  insider_cluster:     'Insiderkaeufe',
-  dilution:            'Verwaesserung'
+  revision_momentum:'Analystenrevisionen', growth_acceleration:'Wachstumsbeschleunigung',
+  margin_trend:'Margentrend', fcf_trend:'Cashflow-Trend',
+  insider_cluster:'Insiderkäufe', dilution:'Verwässerung'
+};
+const KURZ = {
+  revision_momentum:'Revisionen', growth_acceleration:'Beschleunigung',
+  margin_trend:'Margen', fcf_trend:'Cashflow',
+  insider_cluster:'Insider', dilution:'kaum Verwässerung'
 };
 const GRUND = {
   mining_explorer:'Explorer ohne Produktion', no_revenue:'kein Umsatz', too_small:'zu klein',
-  too_large:'zu gross', low_growth:'Wachstum zu schwach', low_margin:'Marge zu duenn',
+  too_large:'zu groß', low_growth:'Wachstum zu schwach', low_margin:'Marge zu dünn',
   negative_fcf:'Cashflow negativ', illiquid:'zu wenig Handel', no_data:'keine Daten'
 };
 const FELD = {
-  handel_zoelle:'Handel & Zoelle', geldpolitik:'Geldpolitik', energie:'Energie',
-  finanzen_krypto:'Finanzen & Krypto', gesundheit:'Gesundheit', verteidigung:'Verteidigung',
-  technologie:'Technologie', umwelt:'Umwelt', arbeitsmarkt:'Arbeitsmarkt', infrastruktur:'Infrastruktur'
+  handel_zoelle:'Handel und Zölle', geldpolitik:'Geldpolitik', energie:'Energie',
+  finanzen_krypto:'Finanzen und Krypto', gesundheit:'Gesundheit', verteidigung:'Verteidigung',
+  technologie:'Technologie', umwelt:'Umwelt', arbeitsmarkt:'Arbeitsmarkt',
+  arbeitsmarkt_migration:'Arbeitsmarkt und Migration', infrastruktur:'Infrastruktur',
+  bildung:'Bildung', landwirtschaft:'Landwirtschaft'
 };
+const QUELLE = {fed:'Fed', ecb:'EZB', bls_latest:'BLS', bls:'BLS'};
 const label = (map, k) => map[k] || String(k).replace(/_/g, ' ');
 
-/* ─────────────── Zustand ─────────────── */
-let D = null;                 // latest.json
-let cohort = 'wachstum';
-let policyField = '*';
+/* ───────── Zustand ───────── */
+let D = null, cohort = 'klein', policyField = '*';
 
-const COHORTS = {
-  wachstum:  {t:'Wachstum 1–20 Mrd', d:'dossiers',            r:'rejected',            s:'screened',
-              note:'Der eigentliche Suchraum. Klein genug, dass eine Fehlbewertung noch existiert, gross genug, dass die Zahlen belastbar sind.'},
-  gross:     {t:'Grosse Werte ab 20 Mrd', d:'dossiers_large_cap',  r:'rejected_large_cap',  s:'screened_large_cap',
-              note:'Kontrollgruppe. Hier ist der Markt effizient, ein hoher Score heisst deshalb weniger als im kleinen Korb.'},
-  fruehphase:{t:'Fruehphase 13F',         d:'dossiers_early_bets', r:'rejected_early_bets', s:'screened_early_bets',
-              note:'Positionen ausgewaehlter Investoren aus den 13F-Meldungen. Die Meldung hinkt bis zu 45 Tage hinterher, das ist kein Echtzeitsignal.'}
+const KOERBE = {
+  klein: {kurz:'K', chip:'1–20 Mrd', titel:'Wachstum, 1 bis 20 Mrd',
+          d:'dossiers', r:'rejected', s:'screened', cls:''},
+  gross: {kurz:'G', chip:'ab 20 Mrd', titel:'Große Werte, ab 20 Mrd',
+          d:'dossiers_large_cap', r:'rejected_large_cap', s:'screened_large_cap', cls:'g'},
+  frueh: {kurz:'F', chip:'13F', titel:'Frühphase aus 13F-Meldungen',
+          d:'dossiers_early_bets', r:'rejected_early_bets', s:'screened_early_bets', cls:'f'}
 };
 
-/* ─────────────── Navigation ─────────────── */
-const TABS = [
-  ['lage',      'Lage',      '<circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/>'],
-  ['screening', 'Screening', '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'],
-  ['archiv',    'Archiv',    '<path d="M4 8h16v11H4z"/><path d="M3 5h18v3H3zM10 12h4"/>'],
-  ['umfeld',    'Umfeld',    '<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.5 3 2.5 13 0 16M12 4c-2.5 3-2.5 13 0 16"/>'],
-  ['depot',     'Depot',     '<path d="M3 8h18v11H3z"/><path d="M8 8V6a4 4 0 018 0v2"/>']
-];
+/* Einordnung, komplett aus dem Score abgeleitet. Keine Meinung, eine Schwelle. */
+function urteil(s){
+  if (!s.reliable)   return {t:'Datenlücken', k:'warn'};
+  if (s.total >= 65) return {t:'Kaufkandidat', k:'go'};
+  if (s.total >= 55) return {t:'Beobachten',   k:'mid'};
+  return {t:'Nachrangig', k:'low'};
+}
+const treiber = s => (s.components || [])
+  .filter(k => k.normalized >= 70).sort((a, b) => b.normalized - a.normalized)
+  .slice(0, 2).map(k => KURZ[k.name] || k.name);
 
+/* Alle Körbe in einer Liste, damit große Werte nicht hinter einem Filter verschwinden. */
+function alleKandidaten(){
+  return Object.entries(KOERBE).flatMap(([id, K]) =>
+    (D[K.d] || []).map(d => ({...d, korb:id}))).sort((a, b) => b.scorecard.total - a.scorecard.total);
+}
+
+/* ───────── Navigation ───────── */
+const TABS = [
+  ['markt',    'Markt',    '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18" opacity=".55"/><path d="M7.5 14.5 11 10l2.6 2.8L17 8"/>'],
+  ['screening','Screening','<circle cx="10.5" cy="10.5" r="6.3"/><path d="M19.5 19.5 15 15"/><path d="M8 10.5h5M10.5 8v5" opacity=".55"/>'],
+  ['historie', 'Historie', '<path d="M3.5 19.5h17"/><path d="M6 19.5V13M10.5 19.5V8.5M15 19.5v-4.5M19.5 19.5V5.5"/>'],
+  ['makro',    'Makro',    '<circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2M12 3.4c2.6 3.2 2.6 14 0 17.2M12 3.4c-2.6 3.2-2.6 14 0 17.2"/>'],
+  ['depot',    'Depot',    '<rect x="3" y="8.2" width="18" height="12" rx="2.2"/><path d="M8.2 8.2V6a3.8 3.8 0 0 1 7.6 0v2.2"/><path d="M12 13v2.4" opacity=".7"/>']
+];
 function buildTabs(){
   $('#tabbar').innerHTML = TABS.map(([id, txt, path], i) =>
     `<button data-go="${id}" class="${i === 0 ? 'on' : ''}" aria-label="${txt}">
@@ -98,7 +111,7 @@ function go(id){
   window.scrollTo({top:0, behavior:'instant'});
 }
 
-/* ─────────────── Detail-Sheet ─────────────── */
+/* ───────── Detailblatt ───────── */
 function sheet(html){
   $('#sheet-body').innerHTML = html;
   $('#sheet').classList.add('on');
@@ -109,69 +122,23 @@ function closeSheet(){
   document.body.style.overflow = '';
 }
 
-/* ═══════════════ LAGE ═══════════════ */
-function renderLage(){
-  const ts = D.track_summary || {};
-  const gesamt = (D.kept || 0) + (D.kept_large_cap || 0) + (D.kept_early_bets || 0);
-  $('#lage-big').textContent = gesamt;
-  $('#lage-lbl').innerHTML = `Kandidaten aus <b>${
-    (D.screened || 0) + (D.screened_large_cap || 0) + (D.screened_early_bets || 0)}</b> geprueften`;
-
-  const tage = alterTage(D.generated_at);
-  $('#stamp').innerHTML = `<span class="live">●</span> ${datum(D.generated_at)}` +
-    (tage > 10 ? `<br><span class="down">${tage} Tage alt</span>` : '');
-
-  $('#lage-tiles').innerHTML = [
-    [(D.screened || 0) + (D.screened_large_cap || 0) + (D.screened_early_bets || 0), 'gescreent'],
-    [D.kept || 0,                       'Dossiers klein'],
-    [(D.policy_acts || []).length,      'Rechtsakte'],
-    [(D.news_items  || []).length,      'Meldungen']
-  ].map(([n, k]) => `<div class="tile"><div class="n">${n}</div><div class="k">${k}</div></div>`).join('');
-
-  /* Einordnung: was bedeutet das, und was folgt daraus */
-  const w = ts.weeks || 0, need = (ts.weeks_needed || 0) + w;
-  let v;
-  if (!ts.meaningful){
-    v = `<div class="card warn">
-      <h3 class="gold">Das Register sagt noch nichts</h3>
-      <p>Erst ${w} von ${need || 12} Wochen erfasst. Jede Trefferquote unterhalb dieser Schwelle
-      ist Rauschen, nicht Qualitaet. Bis dahin ist <b>nichts tun</b> das normale Ergebnis, kein Leerlauf.</p>
-      <div class="bar" style="margin-top:12px"><i style="width:${Math.min(100, w / (need || 12) * 100)}%"></i></div>
-    </div>`;
-  } else {
-    const me = ts.median_excess_pct;
-    v = `<div class="card">
-      <h3>Register belastbar ab jetzt</h3>
-      <p>${w} Wochen, ${ts.entries} Picks. Median-Ueberrendite gegen ${esc(ts.benchmark_symbol)}:
-      <b class="${sign(me)}">${pct(me)}</b>, Trefferquote ${nf(ts.hit_rate_pct, 0)} %.</p>
-    </div>`;
-  }
-  v += `<div class="card">
-    <h3>Kostenbremse</h3>
-    <p>Bei 75 Euro Sparplan im Monat fressen Gebuehren und Spread schnell mehr, als eine gute
-    Auswahl einbringt. Ein Pick lohnt sich nur, wenn er die Kosten des Umschichtens klar schlaegt.</p>
-  </div>`;
-  $('#lage-verdict').innerHTML = v;
-
-  const top = [...(D.dossiers || [])].sort((a, b) => b.scorecard.total - a.scorecard.total).slice(0, 5);
-  $('#lage-top').innerHTML = top.length ? top.map((d, i) => zeile(d, i)).join('')
-    : '<p class="muted">Keine Kandidaten im letzten Lauf.</p>';
-  bindRows($('#lage-top'), D.dossiers || []);
-
-  $('#dispatch-link').href = `https://github.com/${CFG.repo}/actions/workflows/${CFG.workflow}`;
-}
-
-function zeile(d, i){
-  const s = d.scorecard, c = d.candidate;
-  return `<button class="row" data-sym="${esc(c.symbol)}">
-    <span class="rank">${i + 1}</span>
-    <span class="meta">
+/* ───────── Kandidatenzeile ───────── */
+function zeile(d){
+  const s = d.scorecard, c = d.candidate, K = KOERBE[d.korb] || KOERBE.klein;
+  const u = urteil(s), tr = treiber(s);
+  return `<button class="row" data-sym="${esc(c.symbol)}" data-korb="${d.korb}">
+    <span class="rhead">
+      <span class="korb ${K.cls}">${K.kurz}</span>
       <span class="sym">${esc(c.symbol)}</span>
-      <span class="nm" style="display:block">${esc(c.name)} · ${mrd(c.market_cap)}</span>
-      <span class="bar"><i style="width:${Math.max(2, Math.min(100, s.total))}%"></i></span>
+      <span class="score">${nf(s.total, 1)}</span>
+      <span class="chev">›</span>
     </span>
-    <span class="score ${s.reliable ? '' : 'muted'}">${nf(s.total, 1)}</span>
-    <span class="chev">›</span>
+    <span class="nm">${esc(c.name)} · ${mrd(c.market_cap)} · ${esc(c.sector || '')}</span>
+    <span class="bar"><i style="width:${Math.max(2, Math.min(100, s.total))}%"></i></span>
+    <span class="tags">
+      <span class="tag ${u.k}">${u.t}</span>
+      ${tr.map(t => `<span class="tag">${esc(t)}</span>`).join('')}
+    </span>
   </button>`;
 }
 function bindRows(root, pool){
@@ -183,193 +150,249 @@ function bindRows(root, pool){
 
 function detail(d){
   const c = d.candidate, e = d.enrichment || {}, s = d.scorecard;
+  const u = urteil(s), K = KOERBE[d.korb] || KOERBE.klein;
+
   const komp = (s.components || []).map(k => `
-    <div style="padding:10px 0;border-bottom:1px solid rgba(29,155,240,.10)">
+    <div style="padding:10px 0;border-bottom:1px solid rgba(125,211,252,.1)">
       <div style="display:flex;justify-content:space-between;font-size:13.5px">
-        <span>${label(KOMPONENTE, k.name)} <span class="muted">${k.weight} %</span></span>
+        <span>${label(KOMPONENTE, k.name)} <span class="muted">${k.weight}\u202f%</span></span>
         <span class="mono">${nf(k.normalized, 0)}</span>
       </div>
       <div class="bar"><i style="width:${Math.max(2, Math.min(100, k.normalized))}%"></i></div>
     </div>`).join('');
 
   const rows = [
+    ['Korb', esc(K.titel)],
     ['Sektor', esc(c.sector)],
-    ['Marktkapitalisierung', mrd(c.market_cap)],
+    ['Marktkapitalisierung', mrd(c.market_cap) + '\u202fUSD'],
     ['Umsatzwachstum', pct(c.revenue_growth)],
     ['Bruttomarge', pct(c.gross_margin)],
-    ['Freier Cashflow', mrd(c.fcf)],
+    ['Freier Cashflow', mrd(c.fcf) + '\u202fUSD'],
+    ['Handelsvolumen', mrd(c.avg_volume) + '\u202fStück'],
     ['ISIN', esc(c.isin)],
-    ['Revisionen 30 Tage', `<span class="up">${e.up_revisions_30d ?? '–'}↑</span> / <span class="down">${e.down_revisions_30d ?? '–'}↓</span>`],
-    ['Wachstum Quartal', `${nf(e.revenue_growth_prior_q)} → ${nf(e.revenue_growth_recent_q)} %`],
-    ['Insider 90 Tage', `${e.insider_buyers_90d ?? '–'} kaufen / ${e.insider_sellers_90d ?? '–'} verkaufen`],
-    ['Aktienzahl Jahr', pct(e.shares_growth_yoy, 2)],
-    ['Leerverkauft', e.short_pct_float == null ? '–' : nf(e.short_pct_float) + ' %'],
-    ['Institutionell', e.institutional_pct == null ? '–' : nf(e.institutional_pct) + ' %'],
-    ['Naechste Zahlen', datum(e.next_earnings)]
+    ['Revisionen, 30 Tage', `<span class="up">${e.up_revisions_30d ?? '–'} hoch</span> / <span class="down">${e.down_revisions_30d ?? '–'} runter</span>`],
+    ['Wachstum, Quartalsvergleich', `${nf(e.revenue_growth_prior_q)} → ${nf(e.revenue_growth_recent_q)}\u202f%`],
+    ['Insider, 90 Tage', `${e.insider_buyers_90d ?? '–'} kaufen / ${e.insider_sellers_90d ?? '–'} verkaufen`],
+    ['Aktienzahl, Jahresänderung', pct(e.shares_growth_yoy, 2)],
+    ['Leerverkaufsquote', e.short_pct_float == null ? '–' : nf(e.short_pct_float) + '\u202f%'],
+    ['Institutionell gehalten', e.institutional_pct == null ? '–' : nf(e.institutional_pct) + '\u202f%'],
+    ['Nächste Zahlen', datum(e.next_earnings)],
+    ['Datenabdeckung', nf(s.coverage, 0) + '\u202f%']
   ].map(([k, v]) => `<div class="kv"><span>${k}</span><span>${v}</span></div>`).join('');
 
-  const warn = s.reliable ? '' :
-    `<div class="card warn" style="margin:12px 0"><p class="gold">Datenabdeckung nur
-     ${nf(s.coverage, 0)} %. Der Score ist aus Luecken gerechnet und traegt nicht.</p></div>`;
-
   return `
-    <div style="display:flex;align-items:flex-end;gap:12px;margin-bottom:4px">
-      <div>
-        <div class="sym" style="font-size:22px">${esc(c.symbol)}</div>
-        <div class="nm">${esc(c.name)}</div>
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px">
+      <div style="min-width:0">
+        <div class="sym" style="font-size:23px">${esc(c.symbol)}</div>
+        <div class="nm" style="white-space:normal">${esc(c.name)}</div>
+        <div class="tags" style="margin-top:9px">
+          <span class="tag ${u.k}">${u.t}</span>
+          ${treiber(s).map(t => `<span class="tag">${esc(t)}</span>`).join('')}
+        </div>
       </div>
-      <div style="margin-left:auto;text-align:right">
-        <div class="mono" style="font-size:30px;font-weight:600">${nf(s.total, 1)}</div>
-        <div class="k muted mono" style="font-size:9.5px;letter-spacing:.16em">SCORE</div>
+      <div style="margin-left:auto;text-align:right;flex:none">
+        <div class="mono" style="font-size:32px;font-weight:600;line-height:1">${nf(s.total, 1)}</div>
+        <div class="muted mono" style="font-size:9px;letter-spacing:.16em">SCORE</div>
       </div>
     </div>
-    ${warn}
-    <h2 class="sec">Woraus der Score entsteht</h2>${komp}
+    <h2 class="sec">Zusammensetzung</h2>${komp}
     <h2 class="sec">Kennzahlen</h2>${rows}
-    <h2 class="sec">Extern</h2>
+    <h2 class="sec">Primärquellen</h2>
     <div class="kv"><span>SEC EDGAR</span><span><a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${esc(c.symbol)}&type=10-K" target="_blank" rel="noopener">Berichte ↗</a></span></div>
-    <div class="kv"><span>Yahoo Finance</span><span><a href="https://finance.yahoo.com/quote/${esc(c.symbol)}" target="_blank" rel="noopener">Kurs ↗</a></span></div>
-    <div style="height:8px"></div>
-    <button class="btn ghost" style="width:100%" data-close>Schliessen</button>`;
+    <div class="kv"><span>Kurs und Termine</span><span><a href="https://finance.yahoo.com/quote/${esc(c.symbol)}" target="_blank" rel="noopener">Yahoo Finance ↗</a></span></div>
+    <div style="height:10px"></div>
+    <button class="btn ghost" style="width:100%" data-close>Schließen</button>`;
 }
 
-/* ═══════════════ SCREENING ═══════════════ */
+/* ═══════════ MARKT ═══════════ */
+function renderMarkt(){
+  const alle = alleKandidaten();
+  const gescreent = (D.screened || 0) + (D.screened_large_cap || 0) + (D.screened_early_bets || 0);
+  const kauf = alle.filter(d => urteil(d.scorecard).k === 'go');
+  const top10 = alle.slice(0, 10);
+  const schnitt = top10.length ? top10.reduce((a, d) => a + d.scorecard.total, 0) / top10.length : null;
+
+  $('#markt-big').textContent = alle.length;
+  $('#markt-lbl').innerHTML = `Kandidaten aus <b>${gescreent}</b> geprüften`;
+
+  const tage = alterTage(D.generated_at);
+  $('#stamp').innerHTML = `<b><span class="dot"></span>${datum(D.generated_at)}</b>` +
+    (tage > 9 ? `<span class="down">${tage} Tage alt</span>` : 'Datenstand');
+
+  $('#markt-tiles').innerHTML = [
+    [kauf.length,             'Kaufkandidaten'],
+    [nf(schnitt, 1),          'Score Top 10'],
+    [(D.policy_acts || []).length, 'Rechtsakte'],
+    [(D.news_items || []).length,  'Meldungen']
+  ].map(([n, k]) => `<div class="tile"><div class="n">${n}</div><div class="k">${k}</div></div>`).join('');
+
+  const top = alle.slice(0, 8);
+  $('#markt-count').textContent = `K · G · F gemischt`;
+  $('#markt-top').innerHTML = top.length ? top.map(zeile).join('')
+    : '<p class="muted">Keine Kandidaten im letzten Lauf.</p>';
+  bindRows($('#markt-top'), alle);
+
+  /* Track Record, nur Zahlen */
+  const ts = D.track_summary || {};
+  const w = ts.weeks || 0, need = (ts.weeks_needed || 0) + w || 12;
+  $('#markt-record').innerHTML = `
+    <div class="kv"><span>Median-Überrendite</span>
+      <span class="${sign(ts.median_excess_pct)}" style="font-size:16px">${pct(ts.median_excess_pct)}</span></div>
+    <div class="kv"><span>Trefferquote</span><span>${nf(ts.hit_rate_pct, 0)}\u202f%</span></div>
+    <div class="kv"><span>Positionen eingefroren</span><span>${ts.entries ?? 0}</span></div>
+    <div class="kv"><span>Vergleichsindex</span><span>${esc(ts.benchmark_symbol || 'IWO')}</span></div>
+    <div class="kv"><span>Datenbasis</span>
+      <span class="${ts.meaningful ? '' : 'gold'}">${w} von ${need} Kalenderwochen</span></div>
+    <div class="bar" style="margin-top:12px"><i style="width:${Math.min(100, w / need * 100)}%"></i></div>`;
+
+  /* Datenstand: welche Quelle hat geliefert */
+  const nok = D.news_sources_ok || {};
+  const qz = [
+    ['SEC EDGAR', D.edgar_used],
+    ['Federal Register', (D.policy_acts || []).length > 0],
+    ['Fed', nok.fed], ['EZB', nok.ecb], ['BLS', nok.bls_latest],
+    ['BLS-Kalender', D.calendar_source_ok]
+  ].map(([n, ok]) => `<div class="kv"><span>${n}</span>
+      <span class="${ok ? 'up' : 'down'}">${ok ? 'geliefert' : 'nicht erreichbar'}</span></div>`).join('');
+
+  $('#markt-quellen').innerHTML = qz +
+    `<div class="kv"><span>Lauf vom</span><span>${datum(D.generated_at)}, vor ${tage} Tagen</span></div>
+     <div class="kv"><span>Neu laufen lassen</span>
+       <span><code>scroll.command</code> · <a href="https://github.com/${CFG.repo}" target="_blank" rel="noopener">Repo ↗</a></span></div>`;
+}
+
+/* ═══════════ SCREENING ═══════════ */
 function renderScreening(){
-  $('#cohort-chips').innerHTML = Object.entries(COHORTS).map(([k, v]) =>
-    `<button class="chip ${k === cohort ? 'on' : ''}" data-c="${k}">${esc(v.t)}</button>`).join('');
+  $('#cohort-chips').innerHTML = Object.entries(KOERBE).map(([k, v]) =>
+    `<button class="chip ${k === cohort ? 'on' : ''}" data-c="${k}">${esc(v.chip)}</button>`).join('');
   $$('#cohort-chips .chip').forEach(b => b.onclick = () => { cohort = b.dataset.c; renderScreening(); });
 
-  const C = COHORTS[cohort];
-  const list = [...(D[C.d] || [])].sort((a, b) => b.scorecard.total - a.scorecard.total);
-  const rej  = D[C.r] || [];
+  const K = KOERBE[cohort];
+  const list = (D[K.d] || []).map(d => ({...d, korb:cohort}))
+    .sort((a, b) => b.scorecard.total - a.scorecard.total);
+  const rej = D[K.r] || [];
+  const kauf = list.filter(d => urteil(d.scorecard).k === 'go').length;
 
-  $('#cohort-note').innerHTML =
-    `<p>${esc(C.note)}</p><div style="height:10px"></div>
-     <div class="kv"><span>gescreent</span><span>${D[C.s] ?? '–'}</span></div>
-     <div class="kv"><span>Dossiers</span><span>${list.length}</span></div>
-     <div class="kv"><span>aussortiert</span><span>${rej.length}</span></div>`;
+  $('#cohort-tiles').innerHTML = [
+    [D[K.s] ?? '–', 'geprüft'], [list.length, 'Kandidaten'],
+    [kauf, 'davon Kauf'], [rej.length, 'ausgeschieden']
+  ].map(([n, t]) => `<div class="tile"><div class="n">${n}</div><div class="k">${t}</div></div>`).join('');
 
-  $('#cohort-list').innerHTML = list.length
-    ? list.map((d, i) => zeile(d, i)).join('')
-    : '<p class="muted">Keine Kandidaten.</p>';
+  $('#cohort-list').innerHTML = list.length ? list.map(zeile).join('')
+    : '<p class="muted">Keine Kandidaten in diesem Korb.</p>';
   bindRows($('#cohort-list'), list);
 
-  const gruende = {};
-  rej.forEach(r => (gruende[r.reason] = (gruende[r.reason] || 0) + 1));
-  $('#cohort-rejected').innerHTML = Object.entries(gruende).sort((a, b) => b[1] - a[1])
-    .map(([g, n]) => `<div class="kv"><span>${esc(label(GRUND, g))}</span><span>${n}</span></div>`).join('')
-    || '<p class="muted">Nichts aussortiert.</p>';
+  const g = {};
+  rej.forEach(r => (g[r.reason] = (g[r.reason] || 0) + 1));
+  $('#cohort-rejected').innerHTML = Object.entries(g).sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `<div class="kv"><span>${esc(label(GRUND, k))}</span><span>${n}</span></div>`).join('')
+    || '<p class="muted">Nichts ausgeschieden.</p>';
 }
 
-/* ═══════════════ ARCHIV ═══════════════ */
-function renderArchiv(){
+/* ═══════════ HISTORIE ═══════════ */
+function renderHistorie(){
   const ts = D.track_summary || {}, tr = D.track_record || [];
-  $('#bm-name').textContent = ts.benchmark_symbol || 'IWO';
+  $('#bm-sym').textContent = ts.benchmark_symbol || 'IWO';
   const w = ts.weeks || 0, need = (ts.weeks_needed || 0) + w || 12;
 
-  $('#arch-hero').innerHTML = `
-    <div class="card ${ts.meaningful ? '' : 'warn'}">
+  $('#hist-hero').innerHTML = `
+    <div class="card">
       <div style="display:flex;align-items:flex-end;gap:16px">
         <div>
-          <div class="mono ${sign(ts.median_excess_pct)}" style="font-size:38px;font-weight:600;line-height:1">
-            ${pct(ts.median_excess_pct)}</div>
-          <div class="k mono muted" style="font-size:9.5px;letter-spacing:.16em;margin-top:6px">
-            MEDIAN-UEBERRENDITE</div>
+          <div class="mono ${sign(ts.median_excess_pct)}"
+               style="font-size:40px;font-weight:600;line-height:1">${pct(ts.median_excess_pct)}</div>
+          <div class="muted mono" style="font-size:9px;letter-spacing:.16em;margin-top:7px">MEDIAN</div>
         </div>
         <div style="margin-left:auto;text-align:right">
-          <div class="mono" style="font-size:20px">${nf(ts.hit_rate_pct, 0)} %</div>
-          <div class="k mono muted" style="font-size:9.5px;letter-spacing:.16em">TREFFERQUOTE</div>
+          <div class="mono" style="font-size:21px">${nf(ts.hit_rate_pct, 0)}\u202f%</div>
+          <div class="muted mono" style="font-size:9px;letter-spacing:.16em">TREFFERQUOTE</div>
         </div>
       </div>
       <div style="height:14px"></div>
-      <div class="kv"><span>Picks eingefroren</span><span>${ts.entries ?? 0}</span></div>
-      <div class="kv"><span>davon ueber Benchmark</span><span>${ts.beat_benchmark ?? 0}</span></div>
-      <div class="kv"><span>Median absolut</span><span class="${sign(ts.median_return_pct)}">${pct(ts.median_return_pct)}</span></div>
-      <div class="kv"><span>Vergleich</span><span>${esc(ts.benchmark_name || 'IWO')}</span></div>
-      <div style="height:12px"></div>
-      <div class="bar"><i style="width:${Math.min(100, w / need * 100)}%"></i></div>
-      <p style="margin-top:8px" class="${ts.meaningful ? 'muted' : 'gold'}">
-        ${w} von ${need} Kalenderwochen.
-        ${ts.meaningful ? 'Die Zahlen tragen.' : 'Darunter ist alles oben Rauschen.'}</p>
+      <div class="kv"><span>Positionen</span><span>${ts.entries ?? 0}</span></div>
+      <div class="kv"><span>über Vergleichsindex</span><span>${ts.beat_benchmark ?? 0}</span></div>
+      <div class="kv"><span>Median absolut</span>
+        <span class="${sign(ts.median_return_pct)}">${pct(ts.median_return_pct)}</span></div>
+      <div class="kv"><span>Vergleichsindex</span><span>${esc(ts.benchmark_name || 'IWO')}</span></div>
+      <div class="kv"><span>Datenbasis</span>
+        <span class="${ts.meaningful ? '' : 'gold'}">${w} von ${need} Kalenderwochen</span></div>
+      <div class="bar" style="margin-top:12px"><i style="width:${Math.min(100, w / need * 100)}%"></i></div>
+    </div>
+    <div class="card">
+      <p>Verglichen wird gegen ${esc(ts.benchmark_name || 'IWO')}, nicht gegen den S&amp;P 500.
+      Der Suchraum liegt bei 1 bis 20 Mrd, ein Vergleich mit einem Index aus Konzernen würde
+      die Zahlen systematisch schmeicheln. Absolute Rendite steht deshalb an zweiter Stelle.</p>
     </div>`;
 
   const sorted = [...tr].sort((a, b) => (b.excess_pct ?? 0) - (a.excess_pct ?? 0));
-  $('#arch-list').innerHTML = sorted.length ? sorted.map(e => `
+  $('#hist-list').innerHTML = sorted.length ? sorted.map(e => `
     <div class="row">
-      <span class="rank">${e.rank}</span>
-      <span class="meta">
+      <span class="rhead">
         <span class="sym">${esc(e.symbol)}</span>
-        <span class="nm" style="display:block">${datum(e.date)} · Einstand ${nf(e.price_at_entry, 2)}</span>
+        <span class="score ${sign(e.excess_pct)}">${pct(e.excess_pct)}</span>
       </span>
-      <span style="text-align:right;flex:none">
-        <span class="mono ${sign(e.excess_pct)}" style="font-size:15px;font-weight:600">${pct(e.excess_pct)}</span>
-        <span class="muted mono" style="display:block;font-size:10.5px">abs ${pct(e.return_pct)}</span>
-      </span>
-    </div>`).join('') : '<p class="muted">Noch nichts eingefroren.</p>';
+      <span class="nm">${datum(e.date)} · Einstand ${nf(e.price_at_entry, 2)} · Score ${nf(e.score_at_entry, 1)}
+        · absolut ${pct(e.return_pct)}</span>
+    </div>`).join('') : '<p class="muted">Noch keine Positionen eingefroren.</p>';
 }
 
-/* ═══════════════ UMFELD ═══════════════ */
-function renderUmfeld(){
+/* ═══════════ MAKRO ═══════════ */
+function renderMakro(){
   const acts = D.policy_acts || [];
   const felder = [...new Set(acts.flatMap(a => a.fields || []))].sort();
   $('#policy-chips').innerHTML =
     `<button class="chip ${policyField === '*' ? 'on' : ''}" data-f="*">Alle ${acts.length}</button>` +
     felder.map(f => `<button class="chip ${policyField === f ? 'on' : ''}" data-f="${esc(f)}">${esc(label(FELD, f))}</button>`).join('');
-  $$('#policy-chips .chip').forEach(b => b.onclick = () => { policyField = b.dataset.f; renderUmfeld(); });
+  $$('#policy-chips .chip').forEach(b => b.onclick = () => { policyField = b.dataset.f; renderMakro(); });
 
-  const shown = policyField === '*' ? acts : acts.filter(a => (a.fields || []).includes(policyField));
-  $('#policy-list').innerHTML = shown.length ? shown
-    .sort((a, b) => (b.publication_date || '').localeCompare(a.publication_date || ''))
-    .slice(0, 40).map(a => `
-      <div class="row" style="align-items:flex-start">
-        <span class="meta">
-          <a href="${esc(a.url)}" target="_blank" rel="noopener" style="font-size:13.5px;line-height:1.4">${esc(a.title)}</a>
-          <span class="nm" style="display:block;margin-top:5px;white-space:normal">
-            ${datum(a.publication_date)}
-            ${(a.sectors || []).length ? ' · ' + esc((a.sectors || []).join(', ')) : ''}
-            ${(a.countries || []).length ? ' · ' + esc((a.countries || []).join(', ')) : ''}
-          </span>
-        </span>
-      </div>`).join('') : '<p class="muted">Nichts in diesem Feld.</p>';
+  const shown = (policyField === '*' ? acts : acts.filter(a => (a.fields || []).includes(policyField)))
+    .sort((a, b) => (b.publication_date || '').localeCompare(a.publication_date || '')).slice(0, 40);
+
+  $('#policy-list').innerHTML = shown.length ? shown.map(a => `
+    <div class="row">
+      <a href="${esc(a.url)}" target="_blank" rel="noopener"
+         style="font-size:13.5px;line-height:1.42;display:block">${esc(a.title)}</a>
+      <span class="nm" style="white-space:normal;margin-top:5px">${datum(a.publication_date)}${
+        (a.countries || []).length ? ' · ' + esc(a.countries.join(', ')) : ''}</span>
+      <span class="tags">${(a.sectors || []).slice(0, 4).map(s => `<span class="tag">${esc(s)}</span>`).join('')}</span>
+    </div>`).join('') : '<p class="muted">Nichts in diesem Feld.</p>';
 
   const news = D.news_items || [];
-  const QUELLE = {fed:'Fed', ecb:'EZB', bls_latest:'BLS', bls:'BLS'};
   $('#news-list').innerHTML = news.length ? news.slice(0, 30).map(n => `
-    <div class="row" style="align-items:flex-start">
-      <span class="meta">
-        <a href="${esc(n.url)}" target="_blank" rel="noopener" style="font-size:13.5px;line-height:1.4">${esc(n.title)}</a>
-        <span class="nm" style="display:block;margin-top:5px">
-          <span class="acc mono">${esc(QUELLE[n.source] || n.source)}</span> · ${datum(n.published)}</span>
-      </span>
+    <div class="row">
+      <a href="${esc(n.url)}" target="_blank" rel="noopener"
+         style="font-size:13.5px;line-height:1.42;display:block">${esc(n.title)}</a>
+      <span class="nm" style="margin-top:5px"><span class="acc mono">${esc(QUELLE[n.source] || n.source)}</span>
+        · ${datum(n.published)}</span>
     </div>`).join('') : '<p class="muted">Keine Meldungen abrufbar.</p>';
 
   const cal = D.calendar_events || [];
-  $('#cal-list').innerHTML = cal.length ? cal.map(c => `
-    <div class="kv"><span>${esc(c.title)}</span><span>${datum(c.start)}</span></div>`).join('')
+  $('#cal-list').innerHTML = cal.length
+    ? cal.map(c => `<div class="kv"><span>${esc(c.title)}</span><span>${datum(c.start)}</span></div>`).join('')
     : '<p class="muted">Kalender nicht erreichbar.</p>';
 }
 
-/* ═══════════════ DEPOT ═══════════════ */
-const b64 = {
-  dec: s => Uint8Array.from(atob(s), c => c.charCodeAt(0))
-};
+/* ═══════════ DEPOT ═══════════ */
+const b64dec = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function schluessel(pw, salt, iter){
   const raw = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey(
-    {name:'PBKDF2', salt, iterations:iter, hash:'SHA-256'},
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:iter, hash:'SHA-256'},
     raw, {name:'AES-GCM', length:256}, false, ['decrypt']);
 }
 
 function depotLock(){
   $('#depot-body').innerHTML = `
     <div class="lock">
-      <div style="font-size:38px;line-height:1">\u{1F512}</div>
-      <h3 style="margin:14px 0 4px">Depot verschlossen</h3>
-      <p class="muted" style="max-width:340px;margin:0 auto">Dein Bestand liegt auf dieser
-      oeffentlichen Seite nur als AES-GCM-Block. Ohne Passwort ist er Zeichensalat, auch fuer
-      denjenigen, der den Link weitergereicht bekommt.</p>
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="1.4"
+           stroke-linecap="round" style="filter:drop-shadow(0 0 10px rgba(125,211,252,.5))">
+        <rect x="3.5" y="9.5" width="17" height="11" rx="2.2"/>
+        <path d="M8 9.5V6.4a4 4 0 0 1 8 0v3.1"/><path d="M12 13.6v2.8"/>
+      </svg>
+      <h3 style="margin:15px 0 5px">Depot verschlossen</h3>
+      <p class="muted" style="max-width:330px;margin:0 auto;font-size:13px">
+        Der Bestand liegt auf dieser öffentlichen Seite nur als AES-256-GCM-Block.</p>
       <form id="unlock">
-        <input type="password" id="pw" placeholder="Passwort" autocomplete="current-password" inputmode="text">
+        <input type="password" id="pw" placeholder="Passwort" autocomplete="current-password">
         <div><button class="btn" type="submit">Entsperren</button></div>
         <div class="err" id="lockerr"></div>
       </form>
@@ -379,70 +402,75 @@ function depotLock(){
     const err = $('#lockerr'); err.textContent = '';
     try {
       const box = await (await fetch(CFG.depot, {cache:'no-store'})).json();
-      const key = await schluessel($('#pw').value, b64.dec(box.salt), box.iter || 210000);
-      const klar = await crypto.subtle.decrypt({name:'AES-GCM', iv:b64.dec(box.iv)}, key, b64.dec(box.ct));
+      const key = await schluessel($('#pw').value, b64dec(box.salt), box.iter || 210000);
+      const klar = await crypto.subtle.decrypt({name:'AES-GCM', iv:b64dec(box.iv)}, key, b64dec(box.ct));
       depotZeigen(JSON.parse(new TextDecoder().decode(klar)));
     } catch (e) {
       err.textContent = e instanceof SyntaxError || String(e).includes('JSON')
-        ? 'Kein verschluesseltes Depot hinterlegt.' : 'Passwort passt nicht.';
+        ? 'Noch kein verschlüsseltes Depot hinterlegt.' : 'Passwort passt nicht.';
     }
   };
 }
 
 function depotZeigen(dp){
   const h = dp.holdings || [], p = dp.plan || {};
-  const summe = h.reduce((a, x) => a + (x.value ?? 0), 0);
   const aktien = h.filter(x => x.kind === 'aktie'), etfs = h.filter(x => x.kind === 'etf');
-  const anteil = arr => arr.reduce((a, x) => a + (x.weight || 0), 0);
+  const anteil = a => a.reduce((s, x) => s + (x.weight || 0), 0);
+  const summe = h.reduce((s, x) => s + (x.value ?? 0), 0);
 
-  const liste = arr => arr.sort((a, b) => (b.weight || 0) - (a.weight || 0)).map(x => `
+  /* Überschneidung mit dem Screening: was liegt schon im Depot und taucht oben wieder auf */
+  const imDepot = new Set(h.map(x => (x.symbol || '').toUpperCase()).filter(Boolean));
+  const doppelt = alleKandidaten().filter(d => imDepot.has(d.candidate.symbol.toUpperCase()));
+
+  const liste = a => [...a].sort((x, y) => (y.weight || 0) - (x.weight || 0)).map(x => `
     <div class="row">
-      <span class="meta">
+      <span class="rhead">
         <span class="sym">${esc(x.symbol || x.name)}</span>
-        ${x.symbol ? `<span class="nm" style="display:block">${esc(x.name)}</span>` : ''}
-        <span class="bar"><i style="width:${Math.min(100, (x.weight || 0) * 3)}%"></i></span>
+        <span class="score">${nf(x.weight, 1)}\u202f%</span>
       </span>
-      <span class="score">${nf(x.weight, 1)} %</span>
+      ${x.symbol ? `<span class="nm">${esc(x.name)}</span>` : ''}
+      <span class="bar"><i style="width:${Math.min(100, (x.weight || 0) * 3.5)}%"></i></span>
     </div>`).join('');
+
+  const planPos = p.positions || p.items || [];
 
   $('#depot-body').innerHTML = `
     <h2 class="sec">Bestand</h2>
-    <div class="card">
-      <div class="kv"><span>Positionen</span><span>${h.length}</span></div>
-      ${summe ? `<div class="kv"><span>Wert</span><span>${nf(summe, 2)} €</span></div>` : ''}
-      <div class="kv"><span>Einzelaktien</span><span>${nf(anteil(aktien), 1)} %</span></div>
-      <div class="kv"><span>ETF</span><span>${nf(anteil(etfs), 1)} %</span></div>
+    <div class="tiles">
+      <div class="tile"><div class="n">${h.length}</div><div class="k">Positionen</div></div>
+      <div class="tile"><div class="n">${summe ? nf(summe, 0) : '–'}<small>€</small></div><div class="k">Wert</div></div>
+      <div class="tile"><div class="n">${nf(anteil(aktien), 0)}<small>%</small></div><div class="k">Einzelaktien</div></div>
+      <div class="tile"><div class="n">${nf(anteil(etfs), 0)}<small>%</small></div><div class="k">ETF</div></div>
     </div>
+    ${doppelt.length ? `<h2 class="sec">Bereits im Bestand</h2><div class="card">
+      <p>${doppelt.length} Wert${doppelt.length > 1 ? 'e' : ''} aus dem aktuellen Screening liegen schon im Depot.
+      Ein Nachkauf erhöht dort die Konzentration statt zu streuen.</p>
+      <div style="height:8px"></div>
+      ${doppelt.map(zeile).join('')}</div>` : ''}
     ${aktien.length ? `<h2 class="sec">Aktien</h2><div class="card">${liste(aktien)}</div>` : ''}
-    ${etfs.length   ? `<h2 class="sec">ETF</h2><div class="card">${liste(etfs)}</div>` : ''}
-    ${(p.positions || p.items || []).length ? `<h2 class="sec">Sparplan</h2><div class="card">
-      ${(p.positions || p.items).map(x => `<div class="kv"><span>${esc(x.name || x.symbol)}</span>
-        <span>${x.amount != null ? nf(x.amount, 2) + ' €' : nf(x.weight, 1) + ' %'}</span></div>`).join('')}
-      ${p.monthly != null ? `<div class="kv"><span>Summe im Monat</span><span>${nf(p.monthly, 2)} €</span></div>` : ''}
+    ${etfs.length ? `<h2 class="sec">ETF</h2><div class="card">${liste(etfs)}</div>` : ''}
+    ${planPos.length ? `<h2 class="sec">Sparplan</h2><div class="card">
+      ${planPos.map(x => `<div class="kv"><span>${esc(x.name || x.symbol)}</span>
+        <span>${x.amount != null ? nf(x.amount, 2) + '\u202f€' : nf(x.weight, 1) + '\u202f%'}</span></div>`).join('')}
+      ${p.monthly != null ? `<div class="kv"><span>Summe im Monat</span><span>${nf(p.monthly, 2)}\u202f€</span></div>` : ''}
     </div>` : ''}
-    <div class="card warn">
-      <h3 class="gold">Klumpen pruefen</h3>
-      <p>Einzelaktien machen ${nf(anteil(aktien), 1)} % aus. Alles, was im Screening oben
-      auftaucht und hier schon liegt, erhoeht das Klumpenrisiko statt es zu streuen.</p>
-    </div>
-    <div class="center" style="margin:18px 0">
-      <button class="btn ghost" onclick="location.reload()">Wieder verschliessen</button>
+    <div class="center" style="margin:20px 0">
+      <button class="btn ghost" onclick="location.reload()">Wieder verschließen</button>
     </div>`;
+  bindRows($('#depot-body'), alleKandidaten());
 }
 
-/* ─────────────── Hologramm-Energie ───────────────
-   Der Renderer regelt Drehzahl, Helligkeit und Sweep ueber einen Wert 0..1.
-   data-reactive="hover" greift auf dem Handy nicht, also zusaetzlich:
-   ein Anlaufpuls beim Laden und Antippen als Boost. */
+/* ───────── Hologramm-Energie ─────────
+   Der Renderer regelt Drehzahl, Helligkeit und Sweep über einen Wert 0 bis 1.
+   data-reactive="hover" greift auf dem Handy nicht, deshalb Anlaufpuls und Antippen. */
 const kern = () => $('.holo-core')?.holo || null;
-
-function puls(dauer = 2600){
+function puls(ms = 2600){
   const k = kern(); if (!k) return;
   k.setEnergy(1);
-  setTimeout(() => k.setEnergy(null), dauer);
+  setTimeout(() => k.setEnergy(null), ms);
 }
 
-/* ═══════════════ Start ═══════════════ */
+/* ═══════════ Start ═══════════ */
 async function start(){
   buildTabs();
   $('#stage')?.addEventListener('pointerdown', () => puls(1800));
@@ -455,17 +483,21 @@ async function start(){
     if (!r.ok) throw new Error(r.status);
     D = await r.json();
   } catch (e) {
-    $('#lage-verdict').innerHTML =
-      `<div class="card warn"><h3 class="gold">Keine Daten geladen</h3>
-       <p>${esc(CFG.data)} nicht erreichbar (${esc(e.message)}). Die Seite ist da, das Register nicht.</p></div>`;
+    $('#markt-top').innerHTML =
+      `<h3 class="gold">Keine Daten geladen</h3>
+       <p class="muted">${esc(CFG.data)} nicht erreichbar (${esc(e.message)}).</p>`;
     return;
   }
 
-  renderLage(); renderScreening(); renderArchiv(); renderUmfeld(); depotLock();
+  renderMarkt(); renderScreening(); renderHistorie(); renderMakro(); depotLock();
   puls();
 
-  const h = location.hash.slice(1);
-  if (TABS.some(t => t[0] === h)) go(h);
+  const ausHash = () => {
+    const h = location.hash.slice(1);
+    if (TABS.some(t => t[0] === h)) go(h);
+  };
+  window.addEventListener('hashchange', ausHash);
+  ausHash();
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }

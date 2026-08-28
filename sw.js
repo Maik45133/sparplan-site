@@ -1,5 +1,5 @@
-/* Huelle aus dem Cache, Daten immer frisch. Bei jedem Deploy V hochzaehlen. */
-const V = 'sparplan-v3';
+/* Hülle aus dem Cache, Daten immer frisch. Bei jedem Deploy V hochzählen. */
+const V = 'sparplan-v4';
 const HUELLE = ['./', './index.html', './assets/style.css', './assets/app.js',
                 './assets/holo-core.js', './manifest.webmanifest'];
 
@@ -27,6 +27,6 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Huelle: Cache zuerst, im Hintergrund erneuern.
+  // Hülle: Cache zuerst, im Hintergrund erneuern.
   e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request)));
 });

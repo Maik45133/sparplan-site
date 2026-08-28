@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Verschluesselt data/depot.json zu data/depot.enc.
+"""Verschlüsselt data/depot.json zu data/depot.enc.
 
-Nur der Chiffretext wird veroeffentlicht. Das Passwort verlaesst diesen Rechner nicht
-und steht nirgends in diesem Repo. Wer es verliert, verschluesselt neu, mehr nicht.
+Nur der Chiffretext wird veröffentlicht. Das Passwort verlässt diesen Rechner nicht
+und steht nirgends in diesem Repo. Wer es verliert, verschlüsselt neu, mehr nicht.
 
     python3 tools/encrypt_depot.py [pfad/zur/depot.json]
 
 Format der Ausgabe, damit der Browser es ohne Bibliothek lesen kann:
     {"v":1,"kdf":"PBKDF2-SHA256","iter":210000,"salt":b64,"iv":b64,"ct":b64}
-AES-256-GCM, das Authentifizierungs-Tag haengt hinten am Chiffretext, genau so
+AES-256-GCM, das Authentifizierungs-Tag hängt hinten am Chiffretext, genau so
 erwartet es WebCrypto.
 """
 from __future__ import annotations
@@ -26,7 +26,6 @@ HIER = Path(__file__).resolve().parent.parent
 
 
 def aes_gcm(key: bytes, iv: bytes, klartext: bytes) -> bytes:
-    """AES-256-GCM. Nimmt cryptography, faellt auf pyca-freies AESGCM nicht zurueck."""
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     except ImportError:
@@ -47,9 +46,9 @@ def main() -> None:
 
     pw = getpass.getpass("Passwort: ")
     if len(pw) < 8:
-        sys.exit("Mindestens 8 Zeichen. Diese Seite ist oeffentlich erreichbar.")
+        sys.exit("Mindestens 8 Zeichen. Diese Seite ist öffentlich erreichbar.")
     if pw != getpass.getpass("Wiederholen: "):
-        sys.exit("Stimmt nicht ueberein.")
+        sys.exit("Stimmt nicht überein.")
 
     salt = os.urandom(16)
     iv = os.urandom(12)
@@ -64,7 +63,7 @@ def main() -> None:
     }), encoding="utf-8")
 
     print(f"Geschrieben: {ziel} ({ziel.stat().st_size} Bytes)")
-    print("Die Klartext-depot.json gehoert NICHT in dieses Repo, .gitignore haelt sie raus.")
+    print("Die Klartext-depot.json gehört NICHT in dieses Repo, .gitignore hält sie raus.")
 
 
 if __name__ == "__main__":

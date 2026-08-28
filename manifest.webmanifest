@@ -1,13 +1,13 @@
 {
   "name": "Sparplan OS",
   "short_name": "Sparplan",
-  "description": "Datengetriebenes Research fuer Small- und Mid-Cap-Wachstumsaktien.",
+  "description": "Datengetriebenes Research für Wachstumsaktien: Screening, Track Record, makropolitisches Umfeld.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#050A12",
-  "theme_color": "#050A12",
+  "background_color": "#04101A",
+  "theme_color": "#04101A",
   "icons": [
     {
       "src": "assets/icon-192.png",

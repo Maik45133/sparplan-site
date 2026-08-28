@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sparplan OS</title>
-<meta name="description" content="Datengetriebenes Research fuer Small- und Mid-Cap-Wachstumsaktien.">
-<meta name="theme-color" content="#050A12">
+<meta name="description" content="Datengetriebenes Research für Wachstumsaktien: Screening, Track Record, makropolitisches Umfeld.">
+<meta name="theme-color" content="#04101A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Sparplan">
@@ -17,89 +17,83 @@
 <body>
 
 <header class="topbar">
-  <div class="brand">SPARPLAN<b>&nbsp;OS</b></div>
-  <div class="stamp" id="stamp">lade&hellip;</div>
+  <div class="mark">
+    <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="10.2"/>
+      <circle cx="12" cy="12" r="7.1" opacity=".45"/>
+      <path class="fill" d="M12 6.6 17 12.9h-2.9v4.5h-4.2v-4.5H7z"/>
+    </svg>
+    <span class="wm">SPARPLAN<i>OS</i></span>
+  </div>
+  <div class="stamp" id="stamp"><b>lädt</b>Datenstand</div>
 </header>
 
 <main>
 
-<!-- ══════════════ LAGE ══════════════ -->
-<section class="view on" id="v-lage">
+<!-- ═════════ MARKT ═════════ -->
+<section class="view on" id="v-markt">
   <div class="stage" id="stage">
-    <canvas class="holo-core" data-theme="dark" data-color="#1D9BF0" data-r="0.275"
-            data-intensity="1.2" data-reactive="hover" data-logo-scale="1.30"
+    <canvas class="holo-core" data-theme="dark" data-color="#4DBEFA" data-r="0.275"
+            data-intensity="1.05" data-reactive="hover" data-logo-scale="1.28"
             data-logo-path="M12 1.5A10.5 10.5 0 1 1 12 22.5A10.5 10.5 0 1 1 12 1.5Z M12 20.4A8.4 8.4 0 1 0 12 3.6A8.4 8.4 0 1 0 12 20.4Z M12 7.2L16.8 13.1H14.2V17.4H9.8V13.1H7.2Z"></canvas>
   </div>
   <div class="readout">
-    <div class="big" id="lage-big">&mdash;</div>
-    <div class="lbl" id="lage-lbl">Kandidaten im Register</div>
+    <div class="big" id="markt-big">&mdash;</div>
+    <div class="lbl" id="markt-lbl">Kandidaten im Register</div>
   </div>
 
-  <div id="lage-verdict"></div>
+  <div class="tiles" id="markt-tiles"></div>
 
-  <h2 class="sec">Letzter Lauf</h2>
-  <div class="tiles" id="lage-tiles"></div>
+  <h2 class="sec">Stärkste Signale <span id="markt-count"></span></h2>
+  <div class="card" id="markt-top"></div>
 
-  <h2 class="sec">Spitzenreiter, Wachstum 1&ndash;20 Mrd</h2>
-  <div class="card" id="lage-top"></div>
+  <h2 class="sec">Track Record</h2>
+  <div class="card" id="markt-record"></div>
 
-  <h2 class="sec">Aktualisieren</h2>
-  <div class="card">
-    <h3>Der Lauf braucht einen Rechner, keine Seite</h3>
-    <p>Diese Seite ist statisch. Sie kann Yahoo und die SEC nicht selbst befragen und nichts
-    auf eine Festplatte schreiben. Der Datenlauf passiert woanders, diese Seite zeigt nur das
-    Ergebnis. Zwei Wege, beide kosten null Claude-Credits.</p>
-    <div style="height:14px"></div>
-    <div class="kv"><span>Heute</span><span><code>scroll.command</code> doppelklicken, dann pushen</span></div>
-    <div class="kv"><span>Naechster Schritt</span><span><a id="dispatch-link" href="#" target="_blank" rel="noopener">Actions &rarr; Run workflow</a></span></div>
-    <div class="kv"><span>Automatik</span><span id="auto-state" class="gold">aus, so gewollt</span></div>
-  </div>
+  <h2 class="sec">Datenstand</h2>
+  <div class="card" id="markt-quellen"></div>
+
+  <p class="fuss">Automatisch erzeugte Kennzahlen aus öffentlichen Quellen.<br>
+  Keine Anlageberatung, keine Kauf&shy;empfehlung im rechtlichen Sinn.</p>
 </section>
 
-<!-- ══════════════ SCREENING ══════════════ -->
+<!-- ═════════ SCREENING ═════════ -->
 <section class="view" id="v-screening">
   <h2 class="sec">Suchraum</h2>
   <div class="chips" id="cohort-chips"></div>
-  <div class="card" id="cohort-note"></div>
+  <div class="tiles" id="cohort-tiles"></div>
+  <h2 class="sec">Kandidaten</h2>
   <div class="card" id="cohort-list"></div>
-  <h2 class="sec">Aussortiert</h2>
+  <h2 class="sec">Ausgeschieden</h2>
   <div class="card" id="cohort-rejected"></div>
 </section>
 
-<!-- ══════════════ ARCHIV ══════════════ -->
-<section class="view" id="v-archiv">
-  <h2 class="sec">Register</h2>
-  <div id="arch-hero"></div>
-  <h2 class="sec">Eingefrorene Picks</h2>
-  <div class="card" id="arch-list"></div>
-  <h2 class="sec">Warum Ueberrendite und nicht Rendite</h2>
-  <div class="card">
-    <p>Absolute Rendite sagt nichts. Wenn der Markt zehn Prozent macht und ein Pick acht,
-    war die Auswahl schlecht, obwohl die Zahl gruen ist. Verglichen wird deshalb gegen
-    <span class="mono acc" id="bm-name">IWO</span> &ndash; Russell 2000 Growth, bewusst statt
-    S&amp;P 500, weil der Suchraum bei 1 bis 20 Mrd liegt.</p>
-  </div>
+<!-- ═════════ HISTORIE ═════════ -->
+<section class="view" id="v-historie">
+  <h2 class="sec">Überrendite gegen <span id="bm-sym">IWO</span></h2>
+  <div id="hist-hero"></div>
+  <h2 class="sec">Eingefrorene Positionen</h2>
+  <div class="card" id="hist-list"></div>
 </section>
 
-<!-- ══════════════ UMFELD ══════════════ -->
-<section class="view" id="v-umfeld">
+<!-- ═════════ MAKRO ═════════ -->
+<section class="view" id="v-makro">
   <h2 class="sec">Rechtsakte</h2>
   <div class="chips" id="policy-chips"></div>
   <div class="card" id="policy-list"></div>
-  <h2 class="sec">Meldungen</h2>
+  <h2 class="sec">Notenbanken und Statistik</h2>
   <div class="card" id="news-list"></div>
-  <h2 class="sec">Kalender</h2>
+  <h2 class="sec">Termine</h2>
   <div class="card" id="cal-list"></div>
 </section>
 
-<!-- ══════════════ DEPOT ══════════════ -->
+<!-- ═════════ DEPOT ═════════ -->
 <section class="view" id="v-depot">
   <div id="depot-body"></div>
 </section>
 
 </main>
 
-<!-- Detail -->
 <div class="sheet" id="sheet">
   <div class="veil" data-close></div>
   <div class="panel"><div class="grip"></div><div id="sheet-body"></div></div>

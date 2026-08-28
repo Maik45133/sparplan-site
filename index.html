@@ -18,12 +18,12 @@
 
 <header class="topbar">
   <div class="mark">
-    <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="10.2"/>
-      <circle cx="12" cy="12" r="7.1" opacity=".45"/>
-      <path class="fill" d="M12 6.6 17 12.9h-2.9v4.5h-4.2v-4.5H7z"/>
+    <svg class="glyph" viewBox="0 0 28 28" aria-hidden="true">
+      <circle class="ring"  cx="14" cy="14" r="12.4"/>
+      <circle class="ring2" cx="14" cy="14" r="9"/>
+      <path class="arrow" d="M14 7.4 19.4 14h-3.1v5.2h-4.6V14H8.6z"/>
     </svg>
-    <span class="wm">SPARPLAN<i>OS</i></span>
+    <span class="wm"><b>SPARPLAN</b><i>OS</i></span>
   </div>
   <div class="stamp" id="stamp"><b>lädt</b>Datenstand</div>
 </header>
@@ -44,8 +44,7 @@
 
   <div class="tiles" id="markt-tiles"></div>
 
-  <h2 class="sec">Stärkste Signale <span id="markt-count"></span></h2>
-  <div class="card" id="markt-top"></div>
+  <div id="katalog"></div>
 
   <h2 class="sec">Track Record</h2>
   <div class="card" id="markt-record"></div>
@@ -70,10 +69,11 @@
 
 <!-- ═════════ HISTORIE ═════════ -->
 <section class="view" id="v-historie">
-  <h2 class="sec">Überrendite gegen <span id="bm-sym">IWO</span></h2>
+  <h2 class="sec">Gesamtstand</h2>
   <div id="hist-hero"></div>
-  <h2 class="sec">Eingefrorene Positionen</h2>
-  <div class="card" id="hist-list"></div>
+  <h2 class="sec">Verlauf</h2>
+  <div class="chips" id="hist-chips"></div>
+  <div id="hist-liste"></div>
 </section>
 
 <!-- ═════════ MAKRO ═════════ -->
@@ -99,7 +99,7 @@
   <div class="panel"><div class="grip"></div><div id="sheet-body"></div></div>
 </div>
 
-<nav class="tabbar" id="tabbar"></nav>
+<nav class="tabbar" id="tabbar"><span class="tab-ind" id="tabind"></span></nav>
 
 <script src="assets/holo-core.js"></script>
 <script src="assets/app.js"></script>

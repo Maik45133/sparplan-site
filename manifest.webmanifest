@@ -1,0 +1,25 @@
+{
+  "name": "Sparplan OS",
+  "short_name": "Sparplan",
+  "description": "Datengetriebenes Research fuer Small- und Mid-Cap-Wachstumsaktien.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#050A12",
+  "theme_color": "#050A12",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

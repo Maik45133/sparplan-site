@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sparplan OS</title>
+<meta name="description" content="Datengetriebenes Research fuer Small- und Mid-Cap-Wachstumsaktien.">
+<meta name="theme-color" content="#050A12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sparplan">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">SPARPLAN<b>&nbsp;OS</b></div>
+  <div class="stamp" id="stamp">lade&hellip;</div>
+</header>
+
+<main>
+
+<!-- ══════════════ LAGE ══════════════ -->
+<section class="view on" id="v-lage">
+  <div class="stage">
+    <canvas class="holo-core" data-theme="dark" data-color="#1D9BF0" data-r="0.28"
+            data-intensity="1.15" data-reactive="hover"></canvas>
+    <div class="core">
+      <div class="big" id="lage-big">&mdash;</div>
+      <div class="lbl" id="lage-lbl">Kandidaten im Register</div>
+    </div>
+  </div>
+
+  <div id="lage-verdict"></div>
+
+  <h2 class="sec">Letzter Lauf</h2>
+  <div class="tiles" id="lage-tiles"></div>
+
+  <h2 class="sec">Spitzenreiter, Wachstum 1&ndash;20 Mrd</h2>
+  <div class="card" id="lage-top"></div>
+
+  <h2 class="sec">Aktualisieren</h2>
+  <div class="card">
+    <h3>Der Lauf braucht einen Rechner, keine Seite</h3>
+    <p>Diese Seite ist statisch. Sie kann Yahoo und die SEC nicht selbst befragen und nichts
+    auf eine Festplatte schreiben. Der Datenlauf passiert woanders, diese Seite zeigt nur das
+    Ergebnis. Zwei Wege, beide kosten null Claude-Credits.</p>
+    <div style="height:14px"></div>
+    <div class="kv"><span>Heute</span><span><code>scroll.command</code> doppelklicken, dann pushen</span></div>
+    <div class="kv"><span>Naechster Schritt</span><span><a id="dispatch-link" href="#" target="_blank" rel="noopener">Actions &rarr; Run workflow</a></span></div>
+    <div class="kv"><span>Automatik</span><span id="auto-state" class="gold">aus, so gewollt</span></div>
+  </div>
+</section>
+
+<!-- ══════════════ SCREENING ══════════════ -->
+<section class="view" id="v-screening">
+  <h2 class="sec">Suchraum</h2>
+  <div class="chips" id="cohort-chips"></div>
+  <div class="card" id="cohort-note"></div>
+  <div class="card" id="cohort-list"></div>
+  <h2 class="sec">Aussortiert</h2>
+  <div class="card" id="cohort-rejected"></div>
+</section>
+
+<!-- ══════════════ ARCHIV ══════════════ -->
+<section class="view" id="v-archiv">
+  <h2 class="sec">Register</h2>
+  <div id="arch-hero"></div>
+  <h2 class="sec">Eingefrorene Picks</h2>
+  <div class="card" id="arch-list"></div>
+  <h2 class="sec">Warum Ueberrendite und nicht Rendite</h2>
+  <div class="card">
+    <p>Absolute Rendite sagt nichts. Wenn der Markt zehn Prozent macht und ein Pick acht,
+    war die Auswahl schlecht, obwohl die Zahl gruen ist. Verglichen wird deshalb gegen
+    <span class="mono acc" id="bm-name">IWO</span> &ndash; Russell 2000 Growth, bewusst statt
+    S&amp;P 500, weil der Suchraum bei 1 bis 20 Mrd liegt.</p>
+  </div>
+</section>
+
+<!-- ══════════════ UMFELD ══════════════ -->
+<section class="view" id="v-umfeld">
+  <h2 class="sec">Rechtsakte</h2>
+  <div class="chips" id="policy-chips"></div>
+  <div class="card" id="policy-list"></div>
+  <h2 class="sec">Meldungen</h2>
+  <div class="card" id="news-list"></div>
+  <h2 class="sec">Kalender</h2>
+  <div class="card" id="cal-list"></div>
+</section>
+
+<!-- ══════════════ DEPOT ══════════════ -->
+<section class="view" id="v-depot">
+  <div id="depot-body"></div>
+</section>
+
+</main>
+
+<!-- Detail -->
+<div class="sheet" id="sheet">
+  <div class="veil" data-close></div>
+  <div class="panel"><div class="grip"></div><div id="sheet-body"></div></div>
+</div>
+
+<nav class="tabbar" id="tabbar"></nav>
+
+<script src="assets/holo-core.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

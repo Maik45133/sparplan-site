@@ -1,0 +1,8 @@
+# Der Klartext-Bestand darf dieses oeffentliche Repo nie erreichen.
+data/depot.json
+depot.json
+*.plain.json
+
+.DS_Store
+__pycache__/
+.venv/

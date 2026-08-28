@@ -1,5 +1,5 @@
 /* Huelle aus dem Cache, Daten immer frisch. Bei jedem Deploy V hochzaehlen. */
-const V = 'sparplan-v2';
+const V = 'sparplan-v3';
 const HUELLE = ['./', './index.html', './assets/style.css', './assets/app.js',
                 './assets/holo-core.js', './manifest.webmanifest'];
 

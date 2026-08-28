@@ -114,6 +114,8 @@ function renderLage(){
   const ts = D.track_summary || {};
   const gesamt = (D.kept || 0) + (D.kept_large_cap || 0) + (D.kept_early_bets || 0);
   $('#lage-big').textContent = gesamt;
+  $('#lage-lbl').innerHTML = `Kandidaten aus <b>${
+    (D.screened || 0) + (D.screened_large_cap || 0) + (D.screened_early_bets || 0)}</b> geprueften`;
 
   const tage = alterTage(D.generated_at);
   $('#stamp').innerHTML = `<span class="live">●</span> ${datum(D.generated_at)}` +
@@ -428,9 +430,22 @@ function depotZeigen(dp){
     </div>`;
 }
 
+/* ─────────────── Hologramm-Energie ───────────────
+   Der Renderer regelt Drehzahl, Helligkeit und Sweep ueber einen Wert 0..1.
+   data-reactive="hover" greift auf dem Handy nicht, also zusaetzlich:
+   ein Anlaufpuls beim Laden und Antippen als Boost. */
+const kern = () => $('.holo-core')?.holo || null;
+
+function puls(dauer = 2600){
+  const k = kern(); if (!k) return;
+  k.setEnergy(1);
+  setTimeout(() => k.setEnergy(null), dauer);
+}
+
 /* ═══════════════ Start ═══════════════ */
 async function start(){
   buildTabs();
+  $('#stage')?.addEventListener('pointerdown', () => puls(1800));
   $('#sheet').addEventListener('click', e => { if (e.target.closest('[data-close]')) closeSheet(); });
   document.addEventListener('click', e => { if (e.target.matches('[data-close]')) closeSheet(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
@@ -447,6 +462,7 @@ async function start(){
   }
 
   renderLage(); renderScreening(); renderArchiv(); renderUmfeld(); depotLock();
+  puls();
 
   const h = location.hash.slice(1);
   if (TABS.some(t => t[0] === h)) go(h);

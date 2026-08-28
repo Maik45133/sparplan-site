@@ -60,15 +60,20 @@ h2.sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(
 .card p{margin:0;color:var(--ink2);font-size:13.5px}
 
 /* ---------- Hologramm ---------- */
-.stage{position:relative;height:340px;display:grid;place-items:center;margin:8px 0 4px}
+.stage{position:relative;height:330px;display:grid;place-items:center;margin:4px 0 -14px}
 .stage canvas.holo-core{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-  width:340px;height:340px;z-index:0;pointer-events:none;display:block}
-@media(min-width:600px){.stage{height:420px}.stage canvas.holo-core{width:420px;height:420px}}
-.stage .core{position:relative;z-index:2;text-align:center}
-.core .big{font-family:var(--mono);font-size:46px;font-weight:600;letter-spacing:-.02em;line-height:1;
-  text-shadow:0 0 26px rgba(29,155,240,.55)}
-.core .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.24em;color:var(--ink3);
-  text-transform:uppercase;margin-top:8px}
+  width:330px;height:330px;z-index:0;pointer-events:none;display:block}
+@media(min-width:600px){.stage{height:410px;margin-bottom:-20px}
+  .stage canvas.holo-core{width:410px;height:410px}}
+
+/* Die Zahl steht unter der Kugel, nicht darin. Im Kern liegt das Zeichen,
+   und Text auf einer Punkt-Sphaere ist auf dem Handy nicht lesbar. */
+.readout{position:relative;z-index:2;text-align:center;margin-bottom:22px}
+.readout .big{font-family:var(--mono);font-size:52px;font-weight:600;letter-spacing:-.03em;
+  line-height:1;text-shadow:0 0 30px rgba(29,155,240,.5)}
+.readout .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.26em;color:var(--ink3);
+  text-transform:uppercase;margin-top:9px}
+.readout .lbl b{color:var(--acc);font-weight:600}
 
 /* ---------- Kacheln ---------- */
 .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}

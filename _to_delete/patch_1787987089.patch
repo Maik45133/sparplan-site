@@ -1,0 +1,273 @@
+From 0f69505656fa3eebb6b87b6f8a31dbd07302b1a1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 29 Aug 2026 06:38:40 +0000
+Subject: [PATCH] Historie je Korb mit passendem Benchmark, Kurs aus dem Lauf,
+ Zusatzsignale in Detailansicht
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Wechselkurs kommt jetzt primär aus fx_eur_je_usd/fx_at_entry/fx_now im
+Datenlauf statt live von der EZB (Live-Abfrage bleibt Rückfall für
+alte Einträge). Historie zeigt je Korb einen eigenen Block mit dem
+für diesen Korb richtigen Vergleichsindex (S&P 500 für Großwerte,
+IWO für Wachstum/Frühphase) statt einem gemeinsamen Wochen-Benchmark.
+Detailansicht zeigt Trump-Beobachtungsliste, FDA-Rückrufe und
+Bundesaufträge als rein informative Zusatzsignale.
+---
+ assets/app.js    | 118 ++++++++++++++++++++++++++++++++---------------
+ assets/style.css |  13 ++++--
+ sw.js            |   2 +-
+ 3 files changed, 92 insertions(+), 41 deletions(-)
+
+diff --git a/assets/app.js b/assets/app.js
+index 61af314..e2051a6 100644
+--- a/assets/app.js
++++ b/assets/app.js
+@@ -1,6 +1,8 @@
+ /* Sparplan OS. Liest data/latest.json zur Laufzeit und baut daraus alle Ansichten.
+    Kein Build, kein Framework, keine externe Abhängigkeit außer holo-core.js.
+-   Wechselkurse kommen live von der EZB über api.frankfurter.dev. */
++   Wechselkurse stammen aus dem Datenlauf selbst (fx_at_entry/fx_now je Position,
++   fx_eur_je_usd fürs Ganze) und werden nur für ältere Einträge ohne diese Felder
++   live von der EZB über api.frankfurter.dev nachgeladen. */
+ (() => {
+ 'use strict';
+ 
+@@ -79,6 +81,7 @@ const KOERBE = {
+           lang:'Frühphase aus 13F-Meldungen',
+           d:'dossiers_early_bets', r:'rejected_early_bets', s:'screened_early_bets', cls:'f'}
+ };
++const BENCHMARK_KURZ = {IWO:'IWO', '^GSPC':'S&P 500'};
+ 
+ function urteil(s){
+   if (!s.reliable)   return {t:'Datenlücken', k:'warn'};
+@@ -118,6 +121,10 @@ function kursAm(d){
+   return FX.rate[best || FX.tage[0]];
+ }
+ const kursZuletzt = () => FX ? FX.rate[FX.tage[FX.tage.length - 1]] : null;
++/* Der Lauf schreibt den Kurs inzwischen selbst (fx_eur_je_usd), das ist die
++   verlässlichere Quelle. Die Live-EZB-Abfrage bleibt nur als Rückfallebene für
++   einen Datenstand, der noch nicht neu gelaufen ist. */
++const kursJetzt = () => D?.fx_eur_je_usd ?? kursZuletzt();
+ 
+ /* ───────── Navigation ───────── */
+ const TABS = [
+@@ -182,6 +189,7 @@ function zeile(d, rang){
+     <span class="tags">
+       <span class="tag ${u.k}">${u.t}</span>
+       ${tr.map(t => `<span class="tag">${esc(t)}</span>`).join('')}
++      ${d.trump_watch ? '<span class="tag trump">Trump-Depot</span>' : ''}
+     </span>
+   </button>`;
+ }
+@@ -195,7 +203,7 @@ function bindRows(root, pool){
+ function detail(d){
+   const c = d.candidate, e = d.enrichment || {}, s = d.scorecard;
+   const u = urteil(s), K = KOERBE[d.korb] || KOERBE.klein;
+-  const k = kursZuletzt();
++  const k = kursJetzt();
+ 
+   const komp = (s.components || []).map(x => `
+     <div style="padding:10px 0;border-bottom:1px solid rgba(125,211,252,.1)">
+@@ -243,6 +251,7 @@ function detail(d){
+     </div>
+     <h2 class="sec">Zusammensetzung</h2>${komp}
+     <h2 class="sec">Kennzahlen</h2>${rows}
++    ${zusatzsignale(d)}
+     <h2 class="sec">Primärquellen</h2>
+     <div class="kv"><span>SEC EDGAR</span><span><a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${esc(c.symbol)}&type=10-K" target="_blank" rel="noopener">Berichte ↗</a></span></div>
+     <div class="kv"><span>Kurs und Termine</span><span><a href="https://finance.yahoo.com/quote/${esc(c.symbol)}" target="_blank" rel="noopener">Yahoo Finance ↗</a></span></div>
+@@ -250,6 +259,28 @@ function detail(d){
+     <button class="btn ghost" style="width:100%" data-close>Schließen</button>`;
+ }
+ 
++/* Trump-Beobachtungsliste, FDA-Rückrufe, Bundesaufträge: alle drei rein
++   informativ, keiner davon fließt in den Score ein, siehe pipeline.py. Nur
++   gerendert, wenn für den Titel tatsächlich etwas vorliegt. */
++function zusatzsignale(d){
++  const tw = d.trump_watch, fda = d.fda_signals, usa = d.usaspending_signals;
++  if (!tw && !fda && !usa) return '';
++  const teile = [];
++  if (tw) teile.push(`<div class="kv"><span>Trump-Depot</span>
++      <span>seit ${datum(tw.gemeldet)} · ${esc(tw.zeitraum || '')}</span></div>
++    <div class="kv"><span>Quelle</span>
++      <span><a href="${esc(tw.quelle_url)}" target="_blank" rel="noopener">${esc(tw.quelle || 'Offenlegung')} ↗</a></span></div>
++    ${tw.hinweis ? `<p class="muted" style="font-size:12px;margin:6px 0 0">${esc(tw.hinweis)}</p>` : ''}`);
++  if (fda) teile.push(`<div class="kv"><span>FDA-Rückrufe, 12 Monate</span><span>${fda.anzahl_12m}</span></div>
++    ${fda.letzter ? `<p class="muted" style="font-size:12px;margin:6px 0 0">Jüngster: ${datum(fda.letzter.datum)},
++      ${esc(fda.letzter.klasse || '')} (${esc(fda.letzter.art || '')}) · ${esc(fda.letzter.grund || '')}</p>` : ''}`);
++  if (usa) teile.push(`<div class="kv"><span>Bundesaufträge, 12 Monate</span>
++      <span>${usa.anzahl_12m} · ${mrd(usa.summe_12m)} USD</span></div>
++    ${usa.letzter ? `<p class="muted" style="font-size:12px;margin:6px 0 0">Jüngster: ${datum(usa.letzter.datum)},
++      ${esc(usa.letzter.agentur || '')}</p>` : ''}`);
++  return `<h2 class="sec">Zusatzsignale</h2>${teile.join('')}`;
++}
++
+ /* ═══════════ MARKT ═══════════ */
+ function renderMarkt(){
+   const alle = alleKandidaten();
+@@ -369,9 +400,14 @@ const monatKey = d => d.slice(0, 7);
+ const monatName = k => new Date(k + '-15T12:00:00Z')
+   .toLocaleDateString('de-DE', {month:'long', year:'numeric'});
+ 
+-/* Rechnet einen Eintrag in Euro um und trennt Kurs- von Währungseffekt. */
++/* Rechnet einen Eintrag in Euro um und trennt Kurs- von Währungseffekt.
++   Bevorzugt die im Lauf selbst gespeicherten Kurse (fx_at_entry/fx_now):
++   die sind exakt der Stand des jeweiligen Laufs, keine Näherung über das
++   Kalenderdatum. Nur Einträge von vor dieser Funktion haben diese Felder
++   nicht, dafür bleibt die Live-EZB-Abfrage als Rückfallebene. */
+ function inEuro(e, standDatum){
+-  const kEin = kursAm(iso(e.date)), kJetzt = kursAm(standDatum);
++  const kEin = e.fx_at_entry ?? kursAm(iso(e.date));
++  const kJetzt = e.fx_now ?? kursJetzt() ?? kursAm(standDatum);
+   if (!kEin || !kJetzt) return null;
+   const ein = e.price_at_entry * kEin, jetzt = (e.price_now ?? e.price_at_entry) * kJetzt;
+   return {
+@@ -413,7 +449,7 @@ function renderHistorie(){
+       <div class="kv"><span>davon Währungseffekt</span>
+         <span class="${sign(medFx)}">${pct(medFx, 2)}</span></div>
+       <div class="kv"><span>Wechselkurs am Stand</span>
+-        <span>${FX ? '1 USD = ' + nf(kursAm(stand), 4) + ' €' : 'nicht geladen'}</span></div>
++        <span>${kursJetzt() ? '1 USD = ' + nf(kursJetzt(), 4) + ' €' : 'nicht geladen'}</span></div>
+       <div class="kv"><span>Datenbasis</span>
+         <span class="${ts.meaningful ? '' : 'gold'}">${w} von ${need} Kalenderwochen</span></div>
+       <div class="bar" style="margin-top:12px"><i style="--w:${Math.min(100, w / need * 100)}%"></i></div>
+@@ -449,37 +485,51 @@ function renderHistorie(){
+   const sortiert = Object.values(gruppen).sort((a, b) => String(a.key).localeCompare(String(b.key)));
+ 
+   $('#hist-liste').innerHTML = sortiert.map((g, i) => {
+-    /* Top 3 je Korb, damit große Werte nicht von kleinen verdrängt werden */
++    /* Ein Block je Korb, mit dem für diesen Korb richtigen Benchmark: der
++       große Korb misst sich am S&P 500, Wachstum und Frühphase am IWO. Ein
++       gemeinsamer Wochen-Benchmark wäre für zwei der drei Körbe falsch.
++       `e.korb` ist das gespeicherte Feld aus dem Lauf; korbVon() bleibt nur
++       als Rückfall für ältere Einträge ohne dieses Feld. */
+     const nachKorb = {};
+     [...g.eintraege].sort((a, b) => (a.rank || 99) - (b.rank || 99)).forEach(e => {
+-      const kb = korbVon(e.symbol) || 'klein';
++      const kb = e.korb || korbVon(e.symbol) || 'klein';
+       (nachKorb[kb] ||= []).push(e);
+     });
+-    const zeigen = Object.entries(nachKorb).flatMap(([kb, arr]) =>
+-      arr.slice(0, 3).map(e => ({e, kb})));
+-
+-    const bmEin = g.eintraege[0]?.benchmark_at_entry;
+-    const bmRet = g.eintraege[0]?.benchmark_return_pct;
+-
+-    const posHtml = zeigen.map(({e, kb}, j) => {
+-      const K = KOERBE[kb] || KOERBE.klein;
+-      const E = inEuro(e, stand);
+-      const jetzt = E ? eur(E.jetzt) : nf(e.price_now ?? e.price_at_entry, 2) + ' $';
+-      const ein   = E ? eur(E.ein)   : nf(e.price_at_entry, 2) + ' $';
+-      const delta = E ? E.rendite : e.return_pct;
+-      return `<div class="pos" style="animation:zeileRein .42s ${j * 55}ms backwards">
+-        <span class="korb ${K.cls}">${K.kurz}</span>
+-        <span class="pos-mitte">
+-          <span class="pos-top">
+-            <span class="sym">${esc(e.symbol)}</span>
+-            <span class="jetzt">${jetzt}</span>
+-          </span>
+-          <span class="pos-sub">
+-            <span class="nm">${esc(e.name || '')}</span>
+-            <span class="delta ${sign(delta)}">${pct(delta)}</span>
++
++    const koerbeHtml = Object.keys(KOERBE).filter(kb => nachKorb[kb]?.length).map(kb => {
++      const K = KOERBE[kb], top = nachKorb[kb].slice(0, 3);
++      const bmSym = top[0]?.benchmark_symbol || 'IWO';
++      const bmEin = top[0]?.benchmark_at_entry;
++      const bmRet = top[0]?.benchmark_return_pct;
++
++      const posHtml = top.map((e, j) => {
++        const E = inEuro(e, stand);
++        const jetzt = E ? eur(E.jetzt) : nf(e.price_now ?? e.price_at_entry, 2) + ' $';
++        const ein   = E ? eur(E.ein)   : nf(e.price_at_entry, 2) + ' $';
++        const delta = E ? E.rendite : e.return_pct;
++        return `<div class="pos" style="animation:zeileRein .42s ${j * 55}ms backwards">
++          <span class="pos-mitte">
++            <span class="pos-top">
++              <span class="sym">${esc(e.symbol)}</span>
++              <span class="jetzt">${jetzt}</span>
++            </span>
++            <span class="pos-sub">
++              <span class="nm">${esc(e.name || '')}</span>
++              <span class="delta ${sign(delta)}">${pct(delta)}</span>
++            </span>
++            <span class="ein">Einstand ${ein} am ${datum(e.date)} · Score ${nf(e.score_at_entry, 1)}</span>
+           </span>
+-          <span class="ein">Einstand ${ein} am ${datum(e.date)} · Score ${nf(e.score_at_entry, 1)}</span>
+-        </span>
++        </div>`;
++      }).join('');
++
++      return `<div class="korb-block">
++        <div class="korb-kopf">
++          <span class="korb ${K.cls}">${K.kurz}</span>
++          <span class="korb-titel">${esc(K.titel)}</span>
++          <span class="korb-bm">${esc(BENCHMARK_KURZ[bmSym] || bmSym)}
++            ${bmEin != null ? nf(bmEin, 2) : '–'}${bmRet != null ? ' · ' + pct(bmRet) : ''}</span>
++        </div>
++        ${posHtml}
+       </div>`;
+     }).join('');
+ 
+@@ -487,12 +537,8 @@ function renderHistorie(){
+       <div class="woche-kopf">
+         <span class="woche-nr">${histRaster === 'woche' ? 'WOCHE ' + (i + 1) : monatName(g.key).toUpperCase()}</span>
+         <span class="woche-dat">${g.von === g.bis ? datum(g.von) : datum(g.von) + ' bis ' + datum(g.bis)}</span>
+-        <span class="woche-bm">
+-          <b>${bmEin != null ? nf(bmEin, 2) : '–'}</b>
+-          ${esc(ts.benchmark_symbol || 'IWO')}${bmRet != null ? ' · ' + pct(bmRet) : ''}
+-        </span>
+       </div>
+-      <div class="woche-koerper">${posHtml}</div>
++      <div class="woche-koerper">${koerbeHtml}</div>
+     </div>`;
+   }).reverse().join('');
+ }
+diff --git a/assets/style.css b/assets/style.css
+index 6aeb5d7..4906ee1 100644
+--- a/assets/style.css
++++ b/assets/style.css
+@@ -175,6 +175,7 @@ h2.sec span{color:var(--acc);letter-spacing:.1em}
+ .tag.mid {color:var(--acc); border-color:var(--line2);         background:var(--acc-dim)}
+ .tag.low {color:var(--ink3)}
+ .tag.warn{color:var(--gold);border-color:rgba(255,206,92,.42); background:rgba(255,206,92,.09)}
++.tag.trump{color:var(--ink2);border-color:var(--line2);background:rgba(125,211,252,.06)}
+ 
+ /* Balken */
+ .bar{height:4px;background:rgba(125,211,252,.13);border-radius:3px;overflow:hidden;margin-top:8px}
+@@ -204,11 +205,15 @@ h2.sec span{color:var(--acc);letter-spacing:.1em}
+ .woche-nr{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--acc);
+   border:1px solid var(--line2);border-radius:6px;padding:4px 8px;background:var(--acc-dim);flex:none}
+ .woche-dat{font-family:var(--mono);font-size:12px;color:var(--ink2)}
+-.woche-bm{margin-left:auto;text-align:right;font-family:var(--mono);font-size:11px;
+-  color:var(--ink3);line-height:1.4;flex:none}
+-.woche-bm b{display:block;font-size:13px;font-weight:600}
+ .woche-koerper{padding:2px var(--pad) 6px}
+-.pos{display:flex;gap:11px;padding:12px 0;border-bottom:1px solid rgba(125,211,252,.09)}
++.korb-block{padding:9px 0;border-bottom:1px solid var(--line)}
++.korb-block:last-child{border-bottom:none;padding-bottom:2px}
++.korb-block:first-child{padding-top:2px}
++.korb-kopf{display:flex;align-items:baseline;gap:9px;margin-bottom:2px}
++.korb-titel{font-size:12px;font-weight:600;color:var(--ink2)}
++.korb-bm{margin-left:auto;text-align:right;font-family:var(--mono);font-size:10.5px;
++  color:var(--ink3);white-space:nowrap;flex:none}
++.pos{display:flex;gap:11px;padding:10px 0;border-bottom:1px solid rgba(125,211,252,.09)}
+ .pos:last-child{border-bottom:none}
+ .pos-mitte{flex:1;min-width:0}
+ .pos-top{display:flex;align-items:baseline;gap:10px}
+diff --git a/sw.js b/sw.js
+index fa5d1d9..23a20c3 100644
+--- a/sw.js
++++ b/sw.js
+@@ -1,5 +1,5 @@
+ /* Hülle aus dem Cache, Daten immer frisch. Bei jedem Deploy V hochzählen. */
+-const V = 'sparplan-v5';
++const V = 'sparplan-v6';
+ const HUELLE = ['./', './index.html', './assets/style.css', './assets/app.js',
+                 './assets/holo-core.js', './manifest.webmanifest'];
+ 
+-- 
+2.43.0
+

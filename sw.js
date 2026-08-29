@@ -30,3 +30,5 @@ self.addEventListener('fetch', e => {
   // Hülle: Cache zuerst, im Hintergrund erneuern.
   e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request)));
 });
+
+/* GitKraken-Push-Test, 29.08.2026, kann wieder raus */

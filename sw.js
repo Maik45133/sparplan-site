@@ -1,5 +1,5 @@
 /* Hülle aus dem Cache, Daten immer frisch. Bei jedem Deploy V hochzählen. */
-const V = 'sparplan-v5';
+const V = 'sparplan-v6';
 const HUELLE = ['./', './index.html', './assets/style.css', './assets/app.js',
                 './assets/holo-core.js', './manifest.webmanifest'];
 

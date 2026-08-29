@@ -175,6 +175,7 @@ h2.sec span{color:var(--acc);letter-spacing:.1em}
 .tag.mid {color:var(--acc); border-color:var(--line2);         background:var(--acc-dim)}
 .tag.low {color:var(--ink3)}
 .tag.warn{color:var(--gold);border-color:rgba(255,206,92,.42); background:rgba(255,206,92,.09)}
+.tag.trump{color:var(--ink2);border-color:var(--line2);background:rgba(125,211,252,.06)}
 
 /* Balken */
 .bar{height:4px;background:rgba(125,211,252,.13);border-radius:3px;overflow:hidden;margin-top:8px}
@@ -204,11 +205,15 @@ h2.sec span{color:var(--acc);letter-spacing:.1em}
 .woche-nr{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--acc);
   border:1px solid var(--line2);border-radius:6px;padding:4px 8px;background:var(--acc-dim);flex:none}
 .woche-dat{font-family:var(--mono);font-size:12px;color:var(--ink2)}
-.woche-bm{margin-left:auto;text-align:right;font-family:var(--mono);font-size:11px;
-  color:var(--ink3);line-height:1.4;flex:none}
-.woche-bm b{display:block;font-size:13px;font-weight:600}
 .woche-koerper{padding:2px var(--pad) 6px}
-.pos{display:flex;gap:11px;padding:12px 0;border-bottom:1px solid rgba(125,211,252,.09)}
+.korb-block{padding:9px 0;border-bottom:1px solid var(--line)}
+.korb-block:last-child{border-bottom:none;padding-bottom:2px}
+.korb-block:first-child{padding-top:2px}
+.korb-kopf{display:flex;align-items:baseline;gap:9px;margin-bottom:2px}
+.korb-titel{font-size:12px;font-weight:600;color:var(--ink2)}
+.korb-bm{margin-left:auto;text-align:right;font-family:var(--mono);font-size:10.5px;
+  color:var(--ink3);white-space:nowrap;flex:none}
+.pos{display:flex;gap:11px;padding:10px 0;border-bottom:1px solid rgba(125,211,252,.09)}
 .pos:last-child{border-bottom:none}
 .pos-mitte{flex:1;min-width:0}
 .pos-top{display:flex;align-items:baseline;gap:10px}

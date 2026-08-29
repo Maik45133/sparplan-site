@@ -1,6 +1,8 @@
 /* Sparplan OS. Liest data/latest.json zur Laufzeit und baut daraus alle Ansichten.
    Kein Build, kein Framework, keine externe Abhängigkeit außer holo-core.js.
-   Wechselkurse kommen live von der EZB über api.frankfurter.dev. */
+   Wechselkurse stammen aus dem Datenlauf selbst (fx_at_entry/fx_now je Position,
+   fx_eur_je_usd fürs Ganze) und werden nur für ältere Einträge ohne diese Felder
+   live von der EZB über api.frankfurter.dev nachgeladen. */
 (() => {
 'use strict';
 
@@ -79,6 +81,7 @@ const KOERBE = {
           lang:'Frühphase aus 13F-Meldungen',
           d:'dossiers_early_bets', r:'rejected_early_bets', s:'screened_early_bets', cls:'f'}
 };
+const BENCHMARK_KURZ = {IWO:'IWO', '^GSPC':'S&P 500'};
 
 function urteil(s){
   if (!s.reliable)   return {t:'Datenlücken', k:'warn'};
@@ -118,6 +121,10 @@ function kursAm(d){
   return FX.rate[best || FX.tage[0]];
 }
 const kursZuletzt = () => FX ? FX.rate[FX.tage[FX.tage.length - 1]] : null;
+/* Der Lauf schreibt den Kurs inzwischen selbst (fx_eur_je_usd), das ist die
+   verlässlichere Quelle. Die Live-EZB-Abfrage bleibt nur als Rückfallebene für
+   einen Datenstand, der noch nicht neu gelaufen ist. */
+const kursJetzt = () => D?.fx_eur_je_usd ?? kursZuletzt();
 
 /* ───────── Navigation ───────── */
 const TABS = [
@@ -182,6 +189,7 @@ function zeile(d, rang){
     <span class="tags">
       <span class="tag ${u.k}">${u.t}</span>
       ${tr.map(t => `<span class="tag">${esc(t)}</span>`).join('')}
+      ${d.trump_watch ? '<span class="tag trump">Trump-Depot</span>' : ''}
     </span>
   </button>`;
 }
@@ -195,7 +203,7 @@ function bindRows(root, pool){
 function detail(d){
   const c = d.candidate, e = d.enrichment || {}, s = d.scorecard;
   const u = urteil(s), K = KOERBE[d.korb] || KOERBE.klein;
-  const k = kursZuletzt();
+  const k = kursJetzt();
 
   const komp = (s.components || []).map(x => `
     <div style="padding:10px 0;border-bottom:1px solid rgba(125,211,252,.1)">
@@ -243,11 +251,34 @@ function detail(d){
     </div>
     <h2 class="sec">Zusammensetzung</h2>${komp}
     <h2 class="sec">Kennzahlen</h2>${rows}
+    ${zusatzsignale(d)}
     <h2 class="sec">Primärquellen</h2>
     <div class="kv"><span>SEC EDGAR</span><span><a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${esc(c.symbol)}&type=10-K" target="_blank" rel="noopener">Berichte ↗</a></span></div>
     <div class="kv"><span>Kurs und Termine</span><span><a href="https://finance.yahoo.com/quote/${esc(c.symbol)}" target="_blank" rel="noopener">Yahoo Finance ↗</a></span></div>
     <div style="height:10px"></div>
     <button class="btn ghost" style="width:100%" data-close>Schließen</button>`;
+}
+
+/* Trump-Beobachtungsliste, FDA-Rückrufe, Bundesaufträge: alle drei rein
+   informativ, keiner davon fließt in den Score ein, siehe pipeline.py. Nur
+   gerendert, wenn für den Titel tatsächlich etwas vorliegt. */
+function zusatzsignale(d){
+  const tw = d.trump_watch, fda = d.fda_signals, usa = d.usaspending_signals;
+  if (!tw && !fda && !usa) return '';
+  const teile = [];
+  if (tw) teile.push(`<div class="kv"><span>Trump-Depot</span>
+      <span>seit ${datum(tw.gemeldet)} · ${esc(tw.zeitraum || '')}</span></div>
+    <div class="kv"><span>Quelle</span>
+      <span><a href="${esc(tw.quelle_url)}" target="_blank" rel="noopener">${esc(tw.quelle || 'Offenlegung')} ↗</a></span></div>
+    ${tw.hinweis ? `<p class="muted" style="font-size:12px;margin:6px 0 0">${esc(tw.hinweis)}</p>` : ''}`);
+  if (fda) teile.push(`<div class="kv"><span>FDA-Rückrufe, 12 Monate</span><span>${fda.anzahl_12m}</span></div>
+    ${fda.letzter ? `<p class="muted" style="font-size:12px;margin:6px 0 0">Jüngster: ${datum(fda.letzter.datum)},
+      ${esc(fda.letzter.klasse || '')} (${esc(fda.letzter.art || '')}) · ${esc(fda.letzter.grund || '')}</p>` : ''}`);
+  if (usa) teile.push(`<div class="kv"><span>Bundesaufträge, 12 Monate</span>
+      <span>${usa.anzahl_12m} · ${mrd(usa.summe_12m)} USD</span></div>
+    ${usa.letzter ? `<p class="muted" style="font-size:12px;margin:6px 0 0">Jüngster: ${datum(usa.letzter.datum)},
+      ${esc(usa.letzter.agentur || '')}</p>` : ''}`);
+  return `<h2 class="sec">Zusatzsignale</h2>${teile.join('')}`;
 }
 
 /* ═══════════ MARKT ═══════════ */
@@ -369,9 +400,14 @@ const monatKey = d => d.slice(0, 7);
 const monatName = k => new Date(k + '-15T12:00:00Z')
   .toLocaleDateString('de-DE', {month:'long', year:'numeric'});
 
-/* Rechnet einen Eintrag in Euro um und trennt Kurs- von Währungseffekt. */
+/* Rechnet einen Eintrag in Euro um und trennt Kurs- von Währungseffekt.
+   Bevorzugt die im Lauf selbst gespeicherten Kurse (fx_at_entry/fx_now):
+   die sind exakt der Stand des jeweiligen Laufs, keine Näherung über das
+   Kalenderdatum. Nur Einträge von vor dieser Funktion haben diese Felder
+   nicht, dafür bleibt die Live-EZB-Abfrage als Rückfallebene. */
 function inEuro(e, standDatum){
-  const kEin = kursAm(iso(e.date)), kJetzt = kursAm(standDatum);
+  const kEin = e.fx_at_entry ?? kursAm(iso(e.date));
+  const kJetzt = e.fx_now ?? kursJetzt() ?? kursAm(standDatum);
   if (!kEin || !kJetzt) return null;
   const ein = e.price_at_entry * kEin, jetzt = (e.price_now ?? e.price_at_entry) * kJetzt;
   return {
@@ -413,7 +449,7 @@ function renderHistorie(){
       <div class="kv"><span>davon Währungseffekt</span>
         <span class="${sign(medFx)}">${pct(medFx, 2)}</span></div>
       <div class="kv"><span>Wechselkurs am Stand</span>
-        <span>${FX ? '1 USD = ' + nf(kursAm(stand), 4) + ' €' : 'nicht geladen'}</span></div>
+        <span>${kursJetzt() ? '1 USD = ' + nf(kursJetzt(), 4) + ' €' : 'nicht geladen'}</span></div>
       <div class="kv"><span>Datenbasis</span>
         <span class="${ts.meaningful ? '' : 'gold'}">${w} von ${need} Kalenderwochen</span></div>
       <div class="bar" style="margin-top:12px"><i style="--w:${Math.min(100, w / need * 100)}%"></i></div>
@@ -449,37 +485,51 @@ function renderHistorie(){
   const sortiert = Object.values(gruppen).sort((a, b) => String(a.key).localeCompare(String(b.key)));
 
   $('#hist-liste').innerHTML = sortiert.map((g, i) => {
-    /* Top 3 je Korb, damit große Werte nicht von kleinen verdrängt werden */
+    /* Ein Block je Korb, mit dem für diesen Korb richtigen Benchmark: der
+       große Korb misst sich am S&P 500, Wachstum und Frühphase am IWO. Ein
+       gemeinsamer Wochen-Benchmark wäre für zwei der drei Körbe falsch.
+       `e.korb` ist das gespeicherte Feld aus dem Lauf; korbVon() bleibt nur
+       als Rückfall für ältere Einträge ohne dieses Feld. */
     const nachKorb = {};
     [...g.eintraege].sort((a, b) => (a.rank || 99) - (b.rank || 99)).forEach(e => {
-      const kb = korbVon(e.symbol) || 'klein';
+      const kb = e.korb || korbVon(e.symbol) || 'klein';
       (nachKorb[kb] ||= []).push(e);
     });
-    const zeigen = Object.entries(nachKorb).flatMap(([kb, arr]) =>
-      arr.slice(0, 3).map(e => ({e, kb})));
 
-    const bmEin = g.eintraege[0]?.benchmark_at_entry;
-    const bmRet = g.eintraege[0]?.benchmark_return_pct;
+    const koerbeHtml = Object.keys(KOERBE).filter(kb => nachKorb[kb]?.length).map(kb => {
+      const K = KOERBE[kb], top = nachKorb[kb].slice(0, 3);
+      const bmSym = top[0]?.benchmark_symbol || 'IWO';
+      const bmEin = top[0]?.benchmark_at_entry;
+      const bmRet = top[0]?.benchmark_return_pct;
 
-    const posHtml = zeigen.map(({e, kb}, j) => {
-      const K = KOERBE[kb] || KOERBE.klein;
-      const E = inEuro(e, stand);
-      const jetzt = E ? eur(E.jetzt) : nf(e.price_now ?? e.price_at_entry, 2) + ' $';
-      const ein   = E ? eur(E.ein)   : nf(e.price_at_entry, 2) + ' $';
-      const delta = E ? E.rendite : e.return_pct;
-      return `<div class="pos" style="animation:zeileRein .42s ${j * 55}ms backwards">
-        <span class="korb ${K.cls}">${K.kurz}</span>
-        <span class="pos-mitte">
-          <span class="pos-top">
-            <span class="sym">${esc(e.symbol)}</span>
-            <span class="jetzt">${jetzt}</span>
+      const posHtml = top.map((e, j) => {
+        const E = inEuro(e, stand);
+        const jetzt = E ? eur(E.jetzt) : nf(e.price_now ?? e.price_at_entry, 2) + ' $';
+        const ein   = E ? eur(E.ein)   : nf(e.price_at_entry, 2) + ' $';
+        const delta = E ? E.rendite : e.return_pct;
+        return `<div class="pos" style="animation:zeileRein .42s ${j * 55}ms backwards">
+          <span class="pos-mitte">
+            <span class="pos-top">
+              <span class="sym">${esc(e.symbol)}</span>
+              <span class="jetzt">${jetzt}</span>
+            </span>
+            <span class="pos-sub">
+              <span class="nm">${esc(e.name || '')}</span>
+              <span class="delta ${sign(delta)}">${pct(delta)}</span>
+            </span>
+            <span class="ein">Einstand ${ein} am ${datum(e.date)} · Score ${nf(e.score_at_entry, 1)}</span>
           </span>
-          <span class="pos-sub">
-            <span class="nm">${esc(e.name || '')}</span>
-            <span class="delta ${sign(delta)}">${pct(delta)}</span>
-          </span>
-          <span class="ein">Einstand ${ein} am ${datum(e.date)} · Score ${nf(e.score_at_entry, 1)}</span>
-        </span>
+        </div>`;
+      }).join('');
+
+      return `<div class="korb-block">
+        <div class="korb-kopf">
+          <span class="korb ${K.cls}">${K.kurz}</span>
+          <span class="korb-titel">${esc(K.titel)}</span>
+          <span class="korb-bm">${esc(BENCHMARK_KURZ[bmSym] || bmSym)}
+            ${bmEin != null ? nf(bmEin, 2) : '–'}${bmRet != null ? ' · ' + pct(bmRet) : ''}</span>
+        </div>
+        ${posHtml}
       </div>`;
     }).join('');
 
@@ -487,12 +537,8 @@ function renderHistorie(){
       <div class="woche-kopf">
         <span class="woche-nr">${histRaster === 'woche' ? 'WOCHE ' + (i + 1) : monatName(g.key).toUpperCase()}</span>
         <span class="woche-dat">${g.von === g.bis ? datum(g.von) : datum(g.von) + ' bis ' + datum(g.bis)}</span>
-        <span class="woche-bm">
-          <b>${bmEin != null ? nf(bmEin, 2) : '–'}</b>
-          ${esc(ts.benchmark_symbol || 'IWO')}${bmRet != null ? ' · ' + pct(bmRet) : ''}
-        </span>
       </div>
-      <div class="woche-koerper">${posHtml}</div>
+      <div class="woche-koerper">${koerbeHtml}</div>
     </div>`;
   }).reverse().join('');
 }

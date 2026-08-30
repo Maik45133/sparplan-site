@@ -47,6 +47,63 @@ function datum(s){
 const iso = s => String(s || '').slice(0, 10);
 const alterTage = s => Math.floor((Date.now() - new Date(s)) / 864e5);
 
+/* ───────── Bewegung ─────────
+   Rein darstellend: Zahlen zählen hoch statt zu springen, Karten blenden
+   beim Scrollen sanft ein, Balken füllen sich erst, wenn sie sichtbar
+   werden. Nichts hier verändert einen Wert, nur wie er erscheint.
+   `data-count` (+ optional `data-decimals`, `data-fmt="pct"`) auf einem
+   Element lässt seinen Text hochzählen; `data-w` auf einer Balkenzeile
+   setzt beim Sichtbarwerden `--w` auf dem inneren `i`, was die ohnehin
+   vorhandene CSS-Transition auslöst. */
+const REDUZIERT = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function animZahl(el, ziel, {decimals = 0, fmt} = {}){
+  const format = v => fmt === 'pct' ? pct(v, decimals)
+    : fmt === 'pct-plain' ? nf(v, decimals) + ' %' : nf(v, decimals);
+  if (ziel == null || Number.isNaN(ziel)) return;
+  if (REDUZIERT){ el.textContent = format(ziel); return; }
+  const t0 = performance.now(), dauer = 900;
+  const ease = x => 1 - Math.pow(1 - x, 3);
+  (function frame(t){
+    const p = Math.min(1, (t - t0) / dauer);
+    el.textContent = format(ziel * ease(p));
+    if (p < 1) requestAnimationFrame(frame); else el.textContent = format(ziel);
+  })(t0);
+}
+
+const revealBeobachter = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (!e.isIntersecting) return;
+    const el = e.target;
+    el.classList.add('in');
+    const zEl = el.matches('[data-count]') ? el : el.querySelector('[data-count]');
+    if (zEl) animZahl(zEl, parseFloat(zEl.dataset.count), {decimals:+(zEl.dataset.decimals || 0), fmt:zEl.dataset.fmt});
+    if (el.dataset.w != null){
+      const fill = el.querySelector('.compare-fill');
+      if (fill) fill.style.setProperty('--w', el.dataset.w + '%');
+    }
+    $$('.bar i[data-w]', el).forEach(i => i.style.setProperty('--w', i.dataset.w + '%'));
+    revealBeobachter.unobserve(el);
+  });
+}, {threshold:0.3, rootMargin:'0px 0px -30px 0px'}) : null;
+
+function beobachte(el){
+  if (!el) return;
+  if (!revealBeobachter){ el.classList.add('in'); return; }
+  revealBeobachter.observe(el);
+}
+const beobachteAlle = (root, sel) => $$(sel, root).forEach(beobachte);
+
+/* Balken innerhalb eines Detailblatts (Sheet): kein Scrollen nötig, das
+   Blatt ist sofort ganz sichtbar. Zwei rAF sorgen dafür, dass der Browser
+   den Zustand "--w:0" erst zeichnet, bevor der Zielwert gesetzt wird,
+   sonst würde die CSS-Transition nicht auslösen. */
+function aktiviereBalken(root){
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    $$('.bar i[data-w]', root).forEach(i => i.style.setProperty('--w', i.dataset.w + '%'));
+  }));
+}
+
 const KOMPONENTE = {
   revision_momentum:'Analystenrevisionen', growth_acceleration:'Wachstumsbeschleunigung',
   margin_trend:'Margentrend', fcf_trend:'Cashflow-Trend',
@@ -172,6 +229,7 @@ function sheet(html){
   $('#sheet-body').innerHTML = html;
   $('#sheet').classList.add('on');
   document.body.style.overflow = 'hidden';
+  aktiviereBalken($('#sheet-body'));
 }
 function closeSheet(){
   $('#sheet').classList.remove('on');
@@ -195,7 +253,7 @@ function kaufTreiber(s){
 function zeile(d, rang){
   const s = d.scorecard, c = d.candidate, K = KOERBE[d.korb] || KOERBE.klein;
   const u = urteil(s), tr = treiber(s);
-  return `<button class="row" data-sym="${esc(c.symbol)}">
+  return `<button class="row reveal" data-sym="${esc(c.symbol)}">
     <span class="rhead">
       ${rang != null ? `<span class="rang">${rang + 1}</span>` : ''}
       <span class="korb ${K.cls}">${K.kurz}</span>
@@ -204,7 +262,7 @@ function zeile(d, rang){
       <span class="chev">›</span>
     </span>
     <span class="nm">${esc(c.name)} · ${mrd(c.market_cap)} · ${esc(c.sector || '')}</span>
-    <span class="bar"><i style="--w:${Math.max(2, Math.min(100, s.total))}%"></i></span>
+    <span class="bar"><i data-w="${Math.max(2, Math.min(100, s.total))}"></i></span>
     <span class="tags">
       <span class="tag ${u.k}">${u.t}</span>
       ${tr.map(t => `<span class="tag">${esc(t)}</span>`).join('')}
@@ -213,10 +271,13 @@ function zeile(d, rang){
   </button>`;
 }
 function bindRows(root, pool){
-  $$('.row', root).forEach(b => b.onclick = () => {
-    const d = pool.find(x => x.candidate.symbol === b.dataset.sym);
-    if (d){ sheet(detail(d)); bindKaufFormular($('#sheet-body'), d); }
+  $$('.row', root).forEach(b => {
+    b.onclick = () => {
+      const d = pool.find(x => x.candidate.symbol === b.dataset.sym);
+      if (d){ sheet(detail(d)); bindKaufFormular($('#sheet-body'), d); }
+    };
   });
+  beobachteAlle(root, '.row');
 }
 
 function detail(d){
@@ -230,7 +291,7 @@ function detail(d){
         <span>${label(KOMPONENTE, x.name)} <span class="muted">${x.weight} %</span></span>
         <span class="mono">${nf(x.normalized, 0)}</span>
       </div>
-      <div class="bar"><i style="--w:${Math.max(2, Math.min(100, x.normalized))}%"></i></div>
+      <div class="bar"><i data-w="${Math.max(2, Math.min(100, x.normalized))}"></i></div>
     </div>`).join('');
 
   const rows = [
@@ -375,7 +436,11 @@ function renderKandidaten(){
   const top10 = alle.slice(0, 10);
   const schnitt = top10.length ? top10.reduce((a, d) => a + d.scorecard.total, 0) / top10.length : null;
 
-  $('#markt-big').textContent = alle.length;
+  const bigEl = $('#markt-big');
+  bigEl.textContent = '0';
+  bigEl.dataset.count = alle.length;
+  bigEl.dataset.decimals = 0;
+  beobachte(bigEl);
   $('#markt-lbl').innerHTML = `Kandidaten aus <b>${gescreent}</b> geprüften`;
 
   const tage = alterTage(D.generated_at);
@@ -383,9 +448,12 @@ function renderKandidaten(){
     (tage > 9 ? `<span class="down">${tage} Tage alt</span>` : 'Datenstand');
 
   $('#markt-tiles').innerHTML = [
-    [kauf.length, 'Kaufkandidaten'], [nf(schnitt, 1), 'Score Top 10'],
-    [alle.length, 'im Register'], [gescreent, 'geprüft']
-  ].map(([n, k]) => `<div class="tile"><div class="n">${n}</div><div class="k">${k}</div></div>`).join('');
+    [kauf.length, 0, 'Kaufkandidaten'], [schnitt, 1, 'Score Top 10'],
+    [alle.length, 0, 'im Register'], [gescreent, 0, 'geprüft']
+  ].map(([n, d, k]) => `<div class="tile reveal">
+      <div class="n">${n == null ? '–' : `<span data-count="${n}" data-decimals="${d}">0</span>`}</div>
+      <div class="k">${k}</div></div>`).join('');
+  beobachteAlle($('#markt-tiles'), '.tile');
 
   renderKatalog();
   renderKorbVergleich();
@@ -462,31 +530,32 @@ function renderKorbVergleich(){
   const zeilen = Object.keys(KOERBE).map(korbKennzahlen);
   const max = Math.max(1, ...zeilen.map(z => z.schnitt || 0));
   el.innerHTML = zeilen.map(z => `
-    <div class="compare-row">
+    <div class="compare-row reveal" data-w="${z.schnitt ? Math.max(3, z.schnitt / max * 100) : 0}">
       <div class="compare-top">
         <span class="compare-label">${esc(z.K.titel)}</span>
         <span class="compare-sub">${esc(z.K.unter)} · ${z.n} Kandidaten</span>
-        <span class="compare-num">${nf(z.schnitt, 1)}</span>
+        <span class="compare-num"${z.schnitt == null ? '' : ` data-count="${z.schnitt}" data-decimals="1"`}>${z.schnitt == null ? '–' : '0,0'}</span>
       </div>
-      <div class="compare-track"><span class="compare-fill ${z.K.cls}"
-        style="width:${z.schnitt ? Math.max(3, z.schnitt / max * 100) : 0}%"></span></div>
+      <div class="compare-track"><span class="compare-fill ${z.K.cls}"></span></div>
     </div>`).join('');
+  beobachteAlle(el, '.compare-row');
 }
 
 function renderKorbKarten(){
   const el = $('#korb-karten');
   if (!el) return;
   el.innerHTML = Object.keys(KOERBE).map(korbKennzahlen).map(z => `
-    <div class="compare-card ${z.K.cls}">
+    <div class="compare-card reveal ${z.K.cls}">
       <span class="cc-farbe"></span>
       <h4>${esc(z.K.titel)}</h4>
       <div class="cc-unter">${esc(z.K.unter)}</div>
-      <div class="cc-num">${z.n}</div>
+      <div class="cc-num" data-count="${z.n}">0</div>
       <div class="cc-lbl">Kandidaten im Register</div>
       <div class="cc-kv"><span>Ø Score</span><b>${nf(z.schnitt, 1)}</b></div>
       <div class="cc-kv"><span>Kaufkandidaten</span><b>${z.kauf}</b></div>
       <div class="cc-kv"><span>Bester</span><b>${z.bester ? esc(z.bester.candidate.symbol) : '–'}</b></div>
     </div>`).join('');
+  beobachteAlle(el, '.compare-card');
 }
 
 /* Warum ein Titel im jeweiligen Korb ausgeschieden ist. Früher eine eigene
@@ -621,14 +690,14 @@ function renderHistorie(){
     ];
     const max = Math.max(10, ...rows.map(r => Math.abs(r.v || 0)));
     vergleichEl.innerHTML = rows.map(r => `
-      <div class="compare-row">
+      <div class="compare-row reveal" data-w="${r.v == null ? 0 : Math.max(3, Math.min(100, Math.abs(r.v) / max * 100))}">
         <div class="compare-top">
           <span class="compare-label">${r.lbl}</span>
-          <span class="compare-num ${sign(r.v)}">${pct(r.v)}</span>
+          <span class="compare-num ${sign(r.v)}"${r.v == null ? '' : ` data-count="${r.v}" data-decimals="1" data-fmt="pct"`}>${r.v == null ? pct(r.v) : pct(0)}</span>
         </div>
-        <div class="compare-track"><span class="compare-fill ${sign(r.v)}"
-          style="width:${r.v == null ? 0 : Math.max(3, Math.min(100, Math.abs(r.v) / max * 100))}%"></span></div>
+        <div class="compare-track"><span class="compare-fill ${sign(r.v)}"></span></div>
       </div>`).join('');
+    beobachteAlle(vergleichEl, '.compare-row');
   }
 
   $('#hist-chips').innerHTML = [['woche', 'Wochen'], ['monat', 'Monate']]
@@ -835,13 +904,13 @@ function renderDurchschau(h){
   const top2direkt = rows.slice(0, 2).reduce((s, r) => s + r.direkt, 0);
   const maxGesamt = Math.max(1, ...rows.map(r => r.gesamt));
   const vergleich = rows.slice(0, 5).map(r => `
-    <div class="compare-row">
+    <div class="compare-row reveal" data-w="${Math.max(3, r.gesamt / maxGesamt * 100)}">
       <div class="compare-top">
         <span class="compare-label">${esc(r.sym)}</span>
         <span class="compare-sub">${nf(r.direkt, 1)} % direkt${r.indirekt >= 0.05 ? ' + ' + nf(r.indirekt, 1) + ' % über ETF' : ''}</span>
-        <span class="compare-num">${nf(r.gesamt, 1)} %</span>
+        <span class="compare-num" data-count="${r.gesamt}" data-decimals="1" data-fmt="pct-plain">0 %</span>
       </div>
-      <div class="compare-track"><span class="compare-fill" style="width:${Math.max(3, r.gesamt / maxGesamt * 100)}%"></span></div>
+      <div class="compare-track"><span class="compare-fill"></span></div>
     </div>`).join('');
   return `
     <h2 class="sec">Durchschau durch die ETF</h2>
@@ -958,23 +1027,23 @@ function depotZeigen(dp){
   const doppelt = alleKandidaten().filter(d => imDepot.has(d.candidate.symbol.toUpperCase()));
 
   const liste = a => [...a].sort((x, y) => (y.weight || 0) - (x.weight || 0)).map(x => `
-    <div class="row">
+    <div class="row reveal">
       <span class="rhead">
         <span class="sym">${esc(x.symbol || x.name)}</span>
         <span class="score">${nf(x.weight, 1)} %</span>
       </span>
       ${x.symbol ? `<span class="nm">${esc(x.name)}</span>` : ''}
-      <span class="bar"><i style="--w:${Math.min(100, (x.weight || 0) * 3.5)}%"></i></span>
+      <span class="bar"><i data-w="${Math.min(100, (x.weight || 0) * 3.5)}"></i></span>
     </div>`).join('');
   const planPos = p.positions || p.items || [];
 
   $('#depot-body').innerHTML = `
     <h2 class="sec">Bestand</h2>
     <div class="tiles">
-      <div class="tile"><div class="n">${h.length}</div><div class="k">Positionen</div></div>
-      <div class="tile"><div class="n">${summe ? nf(summe, 0) : '–'}<small>€</small></div><div class="k">Wert</div></div>
-      <div class="tile"><div class="n">${nf(anteil(aktien), 0)}<small>%</small></div><div class="k">Einzelaktien</div></div>
-      <div class="tile"><div class="n">${nf(anteil(etfs), 0)}<small>%</small></div><div class="k">ETF</div></div>
+      <div class="tile reveal"><div class="n"><span data-count="${h.length}">0</span></div><div class="k">Positionen</div></div>
+      <div class="tile reveal"><div class="n">${summe ? `<span data-count="${summe}">0</span><small>€</small>` : '–'}</div><div class="k">Wert</div></div>
+      <div class="tile reveal"><div class="n"><span data-count="${anteil(aktien)}">0</span><small>%</small></div><div class="k">Einzelaktien</div></div>
+      <div class="tile reveal"><div class="n"><span data-count="${anteil(etfs)}">0</span><small>%</small></div><div class="k">ETF</div></div>
     </div>
     ${renderDurchschau(h)}
     ${renderPositionen(dp)}
@@ -987,18 +1056,18 @@ function depotZeigen(dp){
     <div class="final">
       <h2 class="sec">Aktien im Vergleich zu ETF</h2>
       <div class="final-grid two">
-        <div class="compare-card">
+        <div class="compare-card reveal">
           <span class="cc-farbe"></span>
           <h4>Einzelaktien</h4>
           <div class="cc-unter">${aktien.length} Position${aktien.length === 1 ? '' : 'en'}</div>
-          <div class="cc-num">${nf(anteil(aktien), 0)}<small style="font-size:16px">%</small></div>
+          <div class="cc-num"><span data-count="${anteil(aktien)}">0</span><small style="font-size:16px">%</small></div>
           <div class="cc-lbl">Anteil am Depot</div>
         </div>
-        <div class="compare-card g">
+        <div class="compare-card reveal g">
           <span class="cc-farbe"></span>
           <h4>ETF</h4>
           <div class="cc-unter">${etfs.length} Position${etfs.length === 1 ? '' : 'en'}</div>
-          <div class="cc-num">${nf(anteil(etfs), 0)}<small style="font-size:16px">%</small></div>
+          <div class="cc-num"><span data-count="${anteil(etfs)}">0</span><small style="font-size:16px">%</small></div>
           <div class="cc-lbl">Anteil am Depot</div>
         </div>
       </div>
@@ -1013,6 +1082,7 @@ function depotZeigen(dp){
     </div>`;
   bindRows($('#depot-body'), alleKandidaten());
   bindVerkaufen($('#depot-body'));
+  beobachteAlle($('#depot-body'), '.tile, .compare-card, .compare-row');
 }
 
 /* ───────── Hologramm-Energie ───────── */
@@ -1048,6 +1118,7 @@ async function start(){
 
   renderKandidaten(); renderHistorie(); depotLock();
   puls();
+  beobachteAlle(document, '.highlight, .feature, .security-card');
 
   const ausHash = () => {
     const h = location.hash.slice(1);

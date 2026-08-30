@@ -728,12 +728,17 @@ function depotLock(){
    Reihenfolge ist wichtig: "Information Tech" und "NASDAQ100" müssen vor
    dem allgemeinen "S&P 500" geprüft werden, weil ihr Fondsname diesen
    Teilstring ebenfalls enthalten kann. */
+/* Stand der Fondsgewichte: 30. Juli - 15. August 2026, aus den offiziellen
+   Kennzahlen der Fondsanbieter (justETF/iShares-Factsheets), keine
+   Live-Abfrage. Google-Positionen fassen die A- und C-Aktie des jeweiligen
+   Fonds zusammen, weil hier die Unternehmens-, nicht die Aktiengattungs-
+   Exposure zaehlt. */
 const ETF_GEWICHTE = new Map([
-  ['Information Tech', {NVDA:15, MSFT:13, AAPL:13}],
-  ['MSCI World',       {NVDA:5, MSFT:4.5, AAPL:4.3, GOOGL:2.5, TSLA:1}],
-  ['MSCI EM IMI',      {TSM:9}],
-  ['NASDAQ100',        {NVDA:9, MSFT:7.8, AAPL:7.5, GOOGL:5, TSLA:2.5}],
-  ['S&P 500',          {NVDA:7, MSFT:6.3, AAPL:6.5, GOOGL:3.8, TSLA:1.8}],
+  ['Information Tech', {AAPL:20.12, NVDA:19.82, MSFT:14.16}],
+  ['MSCI World',       {AAPL:5.48, NVDA:5.04, MSFT:3.56, GOOGL:3.91, TSLA:1.28}],
+  ['MSCI EM IMI',      {TSM:13.04, '1810.HK':0.44}],
+  ['NASDAQ100',        {AAPL:8.16, NVDA:7.87, MSFT:5.58, GOOGL:6.27, TSLA:3.0}],
+  ['S&P 500',          {AAPL:7.65, NVDA:7.38, MSFT:5.23, GOOGL:5.52, TSLA:1.42}],
 ]);
 function fondsFuer(name){
   for (const [schluessel, gewichte] of ETF_GEWICHTE)
@@ -777,9 +782,10 @@ function renderDurchschau(h){
       </table>
       <p class="hinweis">Die direkte Gewichtung zeigt kein Depot vollständig: die beiden größten
       Positionen machen zusammen ${nf(top2direkt, 0)} % direkt aus, durchgerechnet mit den
-      Fondsanteilen aber rund ${nf(top2, 0)} %. Die Fondsgewichte sind Näherungen aus bekannten
-      Indexzusammensetzungen, keine Live-Abfrage, und sollten mit einem echten Datenlauf
-      nachgezogen werden.</p>
+      Fondsanteilen aber rund ${nf(top2, 0)} %. Die Fondsgewichte stammen aus den offiziellen
+      Kennzahlen der Fondsanbieter (Stand Ende Juli/August 2026), keine Live-Abfrage. Nach
+      groesseren Index-Umschichtungen der Fonds braucht diese Tabelle eine manuelle
+      Aktualisierung.</p>
     </div>`;
 }
 

@@ -178,6 +178,19 @@ function closeSheet(){
   document.body.style.overflow = '';
 }
 
+/* Dieselbe Regel wie `pick_drivers` in position.py: nur Komponenten, die den
+   Rang wirklich getragen haben, sortiert nach Beitrag statt nach Perzentil
+   allein, hoechstens drei. Hier in JS verdoppelt, weil die Seite selbst kein
+   Python ausfuehren kann; beide Stellen muessen bei einer Aenderung
+   mitgezogen werden. */
+function kaufTreiber(s){
+  return (s.components || [])
+    .filter(c => c.normalized != null && c.normalized >= 70)
+    .sort((a, b) => b.normalized * b.weight - a.normalized * a.weight)
+    .slice(0, 3)
+    .map(c => ({name:c.name, percentile:c.normalized, weight:c.weight}));
+}
+
 /* ───────── Kandidatenzeile ───────── */
 function zeile(d, rang){
   const s = d.scorecard, c = d.candidate, K = KOERBE[d.korb] || KOERBE.klein;
@@ -202,7 +215,7 @@ function zeile(d, rang){
 function bindRows(root, pool){
   $$('.row', root).forEach(b => b.onclick = () => {
     const d = pool.find(x => x.candidate.symbol === b.dataset.sym);
-    if (d) sheet(detail(d));
+    if (d){ sheet(detail(d)); bindKaufFormular($('#sheet-body'), d); }
   });
 }
 
@@ -262,7 +275,74 @@ function detail(d){
     <div class="kv"><span>SEC EDGAR</span><span><a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${esc(c.symbol)}&type=10-K" target="_blank" rel="noopener">Berichte ↗</a></span></div>
     <div class="kv"><span>Kurs und Termine</span><span><a href="https://finance.yahoo.com/quote/${esc(c.symbol)}" target="_blank" rel="noopener">Yahoo Finance ↗</a></span></div>
     <div style="height:10px"></div>
+    ${kaufAbschnitt(d)}
     <button class="btn ghost" style="width:100%" data-close>Schließen</button>`;
+}
+
+/* Kaufen heißt hier: eine Positionsakte anlegen, keine Order auslösen. Die
+   Seite kann nichts kaufen, sie hält nur fest, warum jemand gekauft hat, für
+   die spätere Prüfung. Ohne entsperrtes Depot fehlt der Schlüssel zum
+   Zurückschreiben, deshalb dann nur ein Hinweis statt eines Formulars. */
+function kaufAbschnitt(d){
+  const sym = d.candidate.symbol;
+  if (!DEPOT){
+    return `<div class="card"><p>Zum Anlegen einer Positionsakte zuerst im
+      Depot-Reiter entsperren.</p></div>`;
+  }
+  const bereits = (DEPOT.positionen || []).some(p => p.symbol === sym && p.status !== 'geschlossen');
+  if (bereits){
+    return `<div class="card"><p>Für ${esc(sym)} liegt bereits eine offene
+      Positionsakte im Depot.</p></div>`;
+  }
+  const preis = d.price != null ? nf(d.price, 2) : '';
+  return `
+    <h2 class="sec">Gekauft?</h2>
+    <div class="card">
+      <p style="margin-bottom:12px">Hält fest, warum gekauft wurde, damit die
+      wöchentliche Prüfung später weiß, ob der Grund noch gilt.</p>
+      <form data-kauf="${esc(sym)}">
+        <div class="kv"><span>Kaufpreis</span>
+          <span><input type="number" step="0.01" name="preis" value="${esc(preis)}"
+            required style="width:110px;text-align:right;border:1px solid var(--line2);
+            border-radius:8px;padding:6px 8px;font-size:14.5px;background:var(--bg);
+            color:var(--ink)"> USD</span></div>
+        <div class="kv"><span>Stückzahl</span>
+          <span><input type="number" step="1" min="1" name="stueck" required
+            style="width:110px;text-align:right;border:1px solid var(--line2);
+            border-radius:8px;padding:6px 8px;font-size:14.5px;background:var(--bg);
+            color:var(--ink)"></span></div>
+        <div class="kv"><span>Datum</span>
+          <span><input type="date" name="datum" value="${new Date().toISOString().slice(0,10)}"
+            required style="border:1px solid var(--line2);border-radius:8px;
+            padding:6px 8px;font-size:14.5px;background:var(--bg);color:var(--ink)"></span></div>
+        <div style="height:6px"></div>
+        <button class="btn" type="submit" style="width:100%">Positionsakte anlegen</button>
+      </form>
+    </div>`;
+}
+function bindKaufFormular(root, d){
+  const f = root.querySelector(`form[data-kauf]`);
+  if (!f) return;
+  f.onsubmit = async ev => {
+    ev.preventDefault();
+    const fd = new FormData(f);
+    const preis = parseFloat(fd.get('preis')), stueck = parseInt(fd.get('stueck'), 10);
+    const datum = fd.get('datum');
+    if (!(preis > 0) || !(stueck > 0)) return;
+    const K = KOERBE[d.korb] || KOERBE.klein;
+    DEPOT.positionen = DEPOT.positionen || [];
+    DEPOT.positionen.push({
+      symbol: d.candidate.symbol, name: d.candidate.name, korb: d.korb,
+      opened: datum, entry_price_usd: preis, quantity: stueck,
+      score_at_entry: d.scorecard.total,
+      benchmark_symbol: K.d === 'dossiers_large_cap' ? '^GSPC' : 'IWO',
+      drivers: kaufTreiber(d.scorecard),
+      status: 'halten',
+      summary: 'Angelegt, noch keine wöchentliche Prüfung gelaufen.'
+    });
+    await depotSpeichern();
+    zeigeSpeicherHinweis();
+  };
 }
 
 /* Trump-Beobachtungsliste, FDA-Rückrufe, Bundesaufträge: alle drei rein
@@ -565,7 +645,47 @@ const b64dec = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function schluessel(pw, salt, iter){
   const raw = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:iter, hash:'SHA-256'},
-    raw, {name:'AES-GCM', length:256}, false, ['decrypt']);
+    raw, {name:'AES-GCM', length:256}, false, ['decrypt', 'encrypt']);
+}
+const b64enc = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+
+/* ───────── Depot merken und zurückschreiben ─────────
+   Die Seite hat keinen Server, sie kann selbst nichts dauerhaft speichern.
+   Nach dem Entsperren bleiben Klartext und Schlüssel nur im Speicher dieser
+   Sitzung. "Speichern" heißt hier: eine neue verschlüsselte Datei bauen und
+   zum Download anbieten. Maik ersetzt data/depot.enc damit und committet wie
+   bisher, nur ohne von Hand JSON zu bearbeiten oder ein Python-Skript
+   aufzurufen. */
+let DEPOT = null, DEPOT_KEY = null, DEPOT_SALT = null, DEPOT_ITER = null;
+
+function zeigeSpeicherHinweis(){
+  sheet(`<h2 class="sec">Heruntergeladen</h2>
+    <div class="card">
+      <p><span class="code">depot.enc</span> liegt jetzt im Downloads-Ordner. Ersetze
+      damit die Datei unter <span class="code">data/depot.enc</span> im Repo und
+      committe wie gewohnt:</p>
+      <div style="height:8px"></div>
+      <p class="code" style="display:block;white-space:pre-line;line-height:1.7">cd ~/Desktop/"Claude Cowork"/sparplan-site
+mv ~/Downloads/depot.enc data/depot.enc
+git add data/depot.enc && git commit -m "Depot aktualisiert" && git push</p>
+      <p style="margin-top:10px">Bis dahin zeigt nur diese Sitzung den neuen Stand,
+      die veroeffentlichte Seite noch den alten.</p>
+    </div>
+    <div style="height:10px"></div>
+    <button class="btn ghost" style="width:100%" data-close>Verstanden</button>`);
+}
+
+async function depotSpeichern(){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const pt = new TextEncoder().encode(JSON.stringify(DEPOT));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, DEPOT_KEY, pt);
+  const box = {salt: DEPOT_SALT, iv: b64enc(iv), iter: DEPOT_ITER, ct: b64enc(ct)};
+  const blob = new Blob([JSON.stringify(box)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'depot.enc'; document.body.appendChild(a); a.click();
+  a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+  depotZeigen(DEPOT);
 }
 function depotLock(){
   $('#depot-body').innerHTML = `
@@ -591,7 +711,9 @@ function depotLock(){
       const box = await (await fetch(CFG.depot, {cache:'no-store'})).json();
       const key = await schluessel($('#pw').value, b64dec(box.salt), box.iter || 210000);
       const klar = await crypto.subtle.decrypt({name:'AES-GCM', iv:b64dec(box.iv)}, key, b64dec(box.ct));
-      depotZeigen(JSON.parse(new TextDecoder().decode(klar)));
+      DEPOT = JSON.parse(new TextDecoder().decode(klar));
+      DEPOT_KEY = key; DEPOT_SALT = box.salt; DEPOT_ITER = box.iter || 210000;
+      depotZeigen(DEPOT);
     } catch (e) {
       err.textContent = e instanceof SyntaxError || String(e).includes('JSON')
         ? 'Noch kein verschlüsseltes Depot hinterlegt.' : 'Passwort passt nicht.';
@@ -668,27 +790,73 @@ function renderDurchschau(h){
    Einträge liefert, erscheinen sie hier mit Halten/Prüfen/Verkaufen; bis
    dahin steht nur die Erklärung. */
 function renderPositionen(dp){
-  const pos = dp.positionen || [];
-  if (!pos.length){
+  const alle = dp.positionen || [];
+  const offen = alle.filter(p => p.status !== 'geschlossen');
+  const zu = alle.filter(p => p.status === 'geschlossen');
+  if (!alle.length){
     return `<h2 class="sec">Kauf- und Verkaufslogik</h2>
       <div class="card">
         <h3>Noch keine Positionsakte</h3>
         <p>Für jeden Kauf hält die Seite künftig fest, welche Kennzahlen ihn begründet
-        haben, und prüft wöchentlich, ob der Grund noch gilt. Verkaufsvorschläge
-        erscheinen dann hier, mit der Begründung dahinter, nicht als starres Kursziel.
-        Das folgt mit dem nächsten Datenlauf.</p>
+        haben, und prüft wöchentlich, ob der Grund noch gilt. Ein Kauf lässt sich im
+        Detailblatt eines Kandidaten anlegen ("Gekauft?"). Verkaufsvorschläge stützen
+        sich dann auf echte Kennzahlen statt auf ein starres Kursziel, sobald ein
+        Datenlauf die wöchentliche Prüfung mitbringt.</p>
       </div>`;
   }
   const FARBE = {verkaufen:'warn', pruefen:'mid', halten:'go'};
   const TEXT  = {verkaufen:'Verkaufen', pruefen:'Prüfen', halten:'Halten'};
-  return `<h2 class="sec">Kauf- und Verkaufslogik</h2><div class="card">${
-    pos.map(p => `<div class="row">
+  const offenHtml = offen.map(p => `<div class="row">
       <span class="rhead">
         <span class="sym">${esc(p.symbol)}</span>
-        <span class="tag ${FARBE[p.action] || 'low'}" style="margin-left:auto">${esc(TEXT[p.action] || p.action)}</span>
+        <span class="tag ${FARBE[p.status] || 'go'}" style="margin-left:auto">${esc(TEXT[p.status] || 'Halten')}</span>
       </span>
       <span class="nm" style="white-space:normal;margin-top:6px">${esc(p.summary || '')}</span>
-    </div>`).join('')}</div>`;
+      <span class="nm" style="margin-top:4px">${p.quantity} Stück · Einstand ${nf(p.entry_price_usd,2)} USD
+        am ${datum(p.opened)} · Score ${nf(p.score_at_entry,1)}</span>
+      ${(p.drivers || []).length ? `<span class="tags">${p.drivers.map(d =>
+        `<span class="tag">${esc(KURZ[d.name] || d.name)}</span>`).join('')}</span>` : ''}
+      <button class="mehr" style="margin-top:9px" data-verkauf="${esc(p.symbol)}">Verkauft markieren</button>
+    </div>`).join('');
+  const zuHtml = zu.length ? `<h2 class="sec">Geschlossen</h2><div class="card">${
+    zu.map(p => `<div class="kv"><span>${esc(p.symbol)}, ${datum(p.closed)}</span>
+      <span class="${sign(p.realized_pct)}">${pct(p.realized_pct)}</span></div>`).join('')}</div>` : '';
+  return `<h2 class="sec">Kauf- und Verkaufslogik</h2><div class="card">${offenHtml}</div>${zuHtml}`;
+}
+function bindVerkaufen(root){
+  $$('[data-verkauf]', root).forEach(b => b.onclick = () => {
+    const sym = b.dataset.verkauf;
+    const p = (DEPOT.positionen || []).find(x => x.symbol === sym && x.status !== 'geschlossen');
+    if (!p) return;
+    sheet(`<h2 class="sec">${esc(sym)} verkauft</h2>
+      <div class="card">
+        <form data-exit="${esc(sym)}">
+          <div class="kv"><span>Verkaufspreis</span>
+            <span><input type="number" step="0.01" name="preis" required
+              style="width:110px;text-align:right;border:1px solid var(--line2);
+              border-radius:8px;padding:6px 8px;font-size:14.5px;background:var(--bg);
+              color:var(--ink)"> USD</span></div>
+          <div class="kv"><span>Datum</span>
+            <span><input type="date" name="datum" value="${new Date().toISOString().slice(0,10)}"
+              required style="border:1px solid var(--line2);border-radius:8px;
+              padding:6px 8px;font-size:14.5px;background:var(--bg);color:var(--ink)"></span></div>
+          <div style="height:6px"></div>
+          <button class="btn" type="submit" style="width:100%">Als verkauft eintragen</button>
+        </form>
+      </div>`);
+    $('[data-exit]').onsubmit = async ev => {
+      ev.preventDefault();
+      const fd = new FormData(ev.target);
+      const preis = parseFloat(fd.get('preis'));
+      if (!(preis > 0)) return;
+      p.status = 'geschlossen';
+      p.closed = fd.get('datum');
+      p.exit_price_usd = preis;
+      p.realized_pct = Math.round((preis / p.entry_price_usd - 1) * 1000) / 10;
+      await depotSpeichern();
+      zeigeSpeicherHinweis();
+    };
+  });
 }
 
 function depotZeigen(dp){
@@ -734,6 +902,7 @@ function depotZeigen(dp){
       <button class="btn ghost" onclick="location.reload()">Wieder verschließen</button>
     </div>`;
   bindRows($('#depot-body'), alleKandidaten());
+  bindVerkaufen($('#depot-body'));
 }
 
 /* ───────── Hologramm-Energie ───────── */

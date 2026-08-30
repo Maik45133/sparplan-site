@@ -2,7 +2,13 @@
    Kein Build, kein Framework, keine externe Abhängigkeit außer holo-core.js.
    Wechselkurse stammen aus dem Datenlauf selbst (fx_at_entry/fx_now je Position,
    fx_eur_je_usd fürs Ganze) und werden nur für ältere Einträge ohne diese Felder
-   live von der EZB über api.frankfurter.dev nachgeladen. */
+   live von der EZB über api.frankfurter.dev nachgeladen.
+
+   Stand 30.08.2026: von fünf auf drei Ansichten reduziert (Kandidaten, Verlauf,
+   Depot), weil "Markt" und "Screening" denselben Inhalt zweimal zeigten und
+   "Makro" ein Nebenschauplatz war. Rechtsakte, Notenbanken und Termine stehen
+   jetzt als "Marktumfeld" am Fuß der Kandidatenansicht statt in einem eigenen
+   Tab: unterstützender Kontext, keine eigene Bestimmung. */
 (() => {
 'use strict';
 
@@ -21,15 +27,15 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
 
 const nf = (v, d = 1) => v === null || v === undefined || Number.isNaN(v)
   ? '–' : Number(v).toLocaleString('de-DE', {minimumFractionDigits:d, maximumFractionDigits:d});
-const pct  = (v, d = 1) => v === null || v === undefined ? '–' : (v > 0 ? '+' : '') + nf(v, d) + ' %';
-const eur  = (v, d = 2) => v === null || v === undefined ? '–' : nf(v, d) + ' €';
+const pct  = (v, d = 1) => v === null || v === undefined ? '–' : (v > 0 ? '+' : '') + nf(v, d) + ' %';
+const eur  = (v, d = 2) => v === null || v === undefined ? '–' : nf(v, d) + ' €';
 const sign = v => v > 0.0001 ? 'up' : v < -0.0001 ? 'down' : '';
 
 function mrd(v){
   if (v == null) return '–';
-  if (v >= 1e12) return nf(v / 1e12, 2) + ' Bio';
-  if (v >= 1e9)  return nf(v / 1e9, 1) + ' Mrd';
-  if (v >= 1e6)  return nf(v / 1e6, 0) + ' Mio';
+  if (v >= 1e12) return nf(v / 1e12, 2) + ' Bio';
+  if (v >= 1e9)  return nf(v / 1e9, 1) + ' Mrd';
+  if (v >= 1e6)  return nf(v / 1e6, 0) + ' Mio';
   return nf(v, 0);
 }
 function datum(s){
@@ -54,7 +60,10 @@ const KURZ = {
 const GRUND = {
   mining_explorer:'Explorer ohne Produktion', no_revenue:'kein Umsatz', too_small:'zu klein',
   too_large:'zu groß', low_growth:'Wachstum zu schwach', low_margin:'Marge zu dünn',
-  negative_fcf:'Cashflow negativ', illiquid:'zu wenig Handel', no_data:'keine Daten'
+  negative_fcf:'Cashflow negativ', illiquid:'zu wenig Handel', no_data:'keine Daten',
+  market_cap_out_of_range:'Marktkapitalisierung passt nicht', crypto_treasury:'Krypto-Bestand statt Geschäft',
+  mortgage_reit:'Hypotheken-REIT', mining_explorer_alt:'Rohstoff-Explorer',
+  sector_not_allowed:'Sektor ausgeschlossen', growth_below_threshold:'Wachstum unter Schwelle'
 };
 const FELD = {
   handel_zoelle:'Handel und Zölle', geldpolitik:'Geldpolitik', energie:'Energie',
@@ -67,7 +76,7 @@ const QUELLE = {fed:'Fed', ecb:'EZB', bls_latest:'BLS', bls:'BLS'};
 const label = (map, k) => map[k] || String(k).replace(/_/g, ' ');
 
 /* ───────── Zustand ───────── */
-let D = null, FX = null, cohort = 'klein', policyField = '*', histRaster = 'woche';
+let D = null, FX = null, policyField = '*', histRaster = 'woche';
 const gezeigt = {klein:5, gross:5, frueh:5};
 
 const KOERBE = {
@@ -126,23 +135,22 @@ const kursZuletzt = () => FX ? FX.rate[FX.tage[FX.tage.length - 1]] : null;
    einen Datenstand, der noch nicht neu gelaufen ist. */
 const kursJetzt = () => D?.fx_eur_je_usd ?? kursZuletzt();
 
-/* ───────── Navigation ───────── */
+/* ───────── Navigation ─────────
+   Drei Ziele statt fünf: "Kandidaten" trägt jetzt, was früher Markt und
+   Screening getrennt zeigten, plus das frühere Makro als Abschnitt am Fuß. */
 const TABS = [
-  ['markt',    'Markt',    '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18" opacity=".5"/><path d="M7.5 14.5 11 10l2.6 2.8L17 8"/>'],
-  ['screening','Screening','<circle cx="10.5" cy="10.5" r="6.3"/><path d="M19.5 19.5 15 15"/><path d="M8 10.5h5M10.5 8v5" opacity=".55"/>'],
-  ['historie', 'Historie', '<path d="M3.5 19.5h17"/><path d="M6 19.5V13M10.5 19.5V8.5M15 19.5v-4.5M19.5 19.5V5.5"/>'],
-  ['makro',    'Makro',    '<circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2M12 3.4c2.6 3.2 2.6 14 0 17.2M12 3.4c-2.6 3.2-2.6 14 0 17.2"/>'],
-  ['depot',    'Depot',    '<rect x="3" y="8.2" width="18" height="12" rx="2.2"/><path d="M8.2 8.2V6a3.8 3.8 0 0 1 7.6 0v2.2"/><path d="M12 13v2.4" opacity=".7"/>']
+  ['kandidaten','Kandidaten','<circle cx="10.5" cy="10.5" r="6.3"/><path d="M19.5 19.5 15 15"/><path d="M8 10.5h5M10.5 8v5" opacity=".55"/>'],
+  ['verlauf',   'Verlauf',   '<path d="M3.5 19.5h17"/><path d="M6 19.5V13M10.5 19.5V8.5M15 19.5v-4.5M19.5 19.5V5.5"/>'],
+  ['depot',     'Depot',     '<rect x="3" y="8.2" width="18" height="12" rx="2.2"/><path d="M8.2 8.2V6a3.8 3.8 0 0 1 7.6 0v2.2"/><path d="M12 13v2.4" opacity=".7"/>']
 ];
 let aktiv = 0;
 
 function buildTabs(){
-  $('#tabbar').insertAdjacentHTML('beforeend', TABS.map(([id, txt, path], i) =>
+  $('#tabbar').innerHTML = TABS.map(([id, txt, path], i) =>
     `<button data-go="${id}" class="${i === 0 ? 'on' : ''}" aria-label="${txt}">
        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">${path}</svg>
-       <em>${txt}</em></button>`).join(''));
+       <em>${txt}</em></button>`).join('');
   $$('#tabbar button').forEach(b => b.onclick = () => go(b.dataset.go));
-  $('#tabind').style.setProperty('--i', 0);
 }
 function go(id){
   const neu = TABS.findIndex(t => t[0] === id);
@@ -155,7 +163,6 @@ function go(id){
     v.classList.toggle('on', an);
   });
   $$('#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.go === id));
-  $('#tabind').style.setProperty('--i', neu);
   location.hash = id;
   window.scrollTo({top:0, behavior:'instant'});
 }
@@ -175,8 +182,7 @@ function closeSheet(){
 function zeile(d, rang){
   const s = d.scorecard, c = d.candidate, K = KOERBE[d.korb] || KOERBE.klein;
   const u = urteil(s), tr = treiber(s);
-  const verz = Math.min(((rang ?? 0) % 5) * 55, 275);
-  return `<button class="row" data-sym="${esc(c.symbol)}" style="animation-delay:${verz}ms">
+  return `<button class="row" data-sym="${esc(c.symbol)}">
     <span class="rhead">
       ${rang != null ? `<span class="rang">${rang + 1}</span>` : ''}
       <span class="korb ${K.cls}">${K.kurz}</span>
@@ -185,7 +191,7 @@ function zeile(d, rang){
       <span class="chev">›</span>
     </span>
     <span class="nm">${esc(c.name)} · ${mrd(c.market_cap)} · ${esc(c.sector || '')}</span>
-    <span class="bar"><i style="--w:${Math.max(2, Math.min(100, s.total))}%;animation-delay:${verz + 90}ms"></i></span>
+    <span class="bar"><i style="--w:${Math.max(2, Math.min(100, s.total))}%"></i></span>
     <span class="tags">
       <span class="tag ${u.k}">${u.t}</span>
       ${tr.map(t => `<span class="tag">${esc(t)}</span>`).join('')}
@@ -206,9 +212,9 @@ function detail(d){
   const k = kursJetzt();
 
   const komp = (s.components || []).map(x => `
-    <div style="padding:10px 0;border-bottom:1px solid rgba(125,211,252,.1)">
-      <div style="display:flex;justify-content:space-between;font-size:13.5px">
-        <span>${label(KOMPONENTE, x.name)} <span class="muted">${x.weight} %</span></span>
+    <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+      <div style="display:flex;justify-content:space-between;font-size:14px">
+        <span>${label(KOMPONENTE, x.name)} <span class="muted">${x.weight} %</span></span>
         <span class="mono">${nf(x.normalized, 0)}</span>
       </div>
       <div class="bar"><i style="--w:${Math.max(2, Math.min(100, x.normalized))}%"></i></div>
@@ -217,27 +223,27 @@ function detail(d){
   const rows = [
     ['Korb', esc(K.lang)],
     ['Sektor', esc(c.sector)],
-    ['Marktkapitalisierung', mrd(c.market_cap) + ' USD' +
-      (k ? ` <span class="muted">≈ ${mrd(c.market_cap * k)} €</span>` : '')],
+    ['Marktkapitalisierung', mrd(c.market_cap) + ' USD' +
+      (k ? ` <span class="muted">≈ ${mrd(c.market_cap * k)} €</span>` : '')],
     ['Umsatzwachstum', pct(c.revenue_growth)],
     ['Bruttomarge', pct(c.gross_margin)],
-    ['Freier Cashflow', mrd(c.fcf) + ' USD'],
-    ['Handelsvolumen', mrd(c.avg_volume) + ' Stück'],
-    ['ISIN', esc(c.isin)],
+    ['Freier Cashflow', mrd(c.fcf) + ' USD'],
+    ['Handelsvolumen', mrd(c.avg_volume) + ' Stück'],
+    ['ISIN', `<span class="code">${esc(c.isin)}</span>`],
     ['Revisionen, 30 Tage', `<span class="up">${e.up_revisions_30d ?? '–'} hoch</span> / <span class="down">${e.down_revisions_30d ?? '–'} runter</span>`],
-    ['Wachstum, Quartalsvergleich', `${nf(e.revenue_growth_prior_q)} → ${nf(e.revenue_growth_recent_q)} %`],
+    ['Wachstum, Quartalsvergleich', `${nf(e.revenue_growth_prior_q)} → ${nf(e.revenue_growth_recent_q)} %`],
     ['Insider, 90 Tage', `${e.insider_buyers_90d ?? '–'} kaufen / ${e.insider_sellers_90d ?? '–'} verkaufen`],
     ['Aktienzahl, Jahresänderung', pct(e.shares_growth_yoy, 2)],
-    ['Leerverkaufsquote', e.short_pct_float == null ? '–' : nf(e.short_pct_float) + ' %'],
-    ['Institutionell gehalten', e.institutional_pct == null ? '–' : nf(e.institutional_pct) + ' %'],
+    ['Leerverkaufsquote', e.short_pct_float == null ? '–' : nf(e.short_pct_float) + ' %'],
+    ['Institutionell gehalten', e.institutional_pct == null ? '–' : nf(e.institutional_pct) + ' %'],
     ['Nächste Zahlen', datum(e.next_earnings)],
-    ['Datenabdeckung', nf(s.coverage, 0) + ' %']
+    ['Datenabdeckung', nf(s.coverage, 0) + ' %']
   ].map(([a, b]) => `<div class="kv"><span>${a}</span><span>${b}</span></div>`).join('');
 
   return `
-    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px">
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px">
       <div style="min-width:0">
-        <div class="sym" style="font-size:23px">${esc(c.symbol)}</div>
+        <div class="sym" style="font-size:25px">${esc(c.symbol)}</div>
         <div class="nm" style="white-space:normal">${esc(c.name)}</div>
         <div class="tags" style="margin-top:9px">
           <span class="tag ${u.k}">${u.t}</span>
@@ -245,8 +251,8 @@ function detail(d){
         </div>
       </div>
       <div style="margin-left:auto;text-align:right;flex:none">
-        <div class="mono" style="font-size:32px;font-weight:600;line-height:1">${nf(s.total, 1)}</div>
-        <div class="muted mono" style="font-size:9px;letter-spacing:.16em">SCORE</div>
+        <div class="mono" style="font-size:32px;font-weight:700;line-height:1;letter-spacing:-.02em">${nf(s.total, 1)}</div>
+        <div class="muted" style="font-size:11px;margin-top:3px">Score</div>
       </div>
     </div>
     <h2 class="sec">Zusammensetzung</h2>${komp}
@@ -270,19 +276,19 @@ function zusatzsignale(d){
       <span>seit ${datum(tw.gemeldet)} · ${esc(tw.zeitraum || '')}</span></div>
     <div class="kv"><span>Quelle</span>
       <span><a href="${esc(tw.quelle_url)}" target="_blank" rel="noopener">${esc(tw.quelle || 'Offenlegung')} ↗</a></span></div>
-    ${tw.hinweis ? `<p class="muted" style="font-size:12px;margin:6px 0 0">${esc(tw.hinweis)}</p>` : ''}`);
+    ${tw.hinweis ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">${esc(tw.hinweis)}</p>` : ''}`);
   if (fda) teile.push(`<div class="kv"><span>FDA-Rückrufe, 12 Monate</span><span>${fda.anzahl_12m}</span></div>
-    ${fda.letzter ? `<p class="muted" style="font-size:12px;margin:6px 0 0">Jüngster: ${datum(fda.letzter.datum)},
+    ${fda.letzter ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">Jüngster: ${datum(fda.letzter.datum)},
       ${esc(fda.letzter.klasse || '')} (${esc(fda.letzter.art || '')}) · ${esc(fda.letzter.grund || '')}</p>` : ''}`);
   if (usa) teile.push(`<div class="kv"><span>Bundesaufträge, 12 Monate</span>
       <span>${usa.anzahl_12m} · ${mrd(usa.summe_12m)} USD</span></div>
-    ${usa.letzter ? `<p class="muted" style="font-size:12px;margin:6px 0 0">Jüngster: ${datum(usa.letzter.datum)},
+    ${usa.letzter ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">Jüngster: ${datum(usa.letzter.datum)},
       ${esc(usa.letzter.agentur || '')}</p>` : ''}`);
   return `<h2 class="sec">Zusatzsignale</h2>${teile.join('')}`;
 }
 
-/* ═══════════ MARKT ═══════════ */
-function renderMarkt(){
+/* ═══════════ KANDIDATEN ═══════════ */
+function renderKandidaten(){
   const alle = alleKandidaten();
   const gescreent = (D.screened || 0) + (D.screened_large_cap || 0) + (D.screened_early_bets || 0);
   const kauf = alle.filter(d => urteil(d.scorecard).k === 'go');
@@ -298,22 +304,10 @@ function renderMarkt(){
 
   $('#markt-tiles').innerHTML = [
     [kauf.length, 'Kaufkandidaten'], [nf(schnitt, 1), 'Score Top 10'],
-    [(D.policy_acts || []).length, 'Rechtsakte'], [(D.news_items || []).length, 'Meldungen']
-  ].map(([n, k], i) => `<div class="tile" style="animation-delay:${i * 70}ms">
-      <div class="n">${n}</div><div class="k">${k}</div></div>`).join('');
+    [alle.length, 'im Register'], [gescreent, 'geprüft']
+  ].map(([n, k]) => `<div class="tile"><div class="n">${n}</div><div class="k">${k}</div></div>`).join('');
 
   renderKatalog();
-
-  const ts = D.track_summary || {};
-  const w = ts.weeks || 0, need = (ts.weeks_needed || 0) + w || 12;
-  $('#markt-record').innerHTML = `
-    <div class="kv"><span>Median-Überrendite</span>
-      <span class="${sign(ts.median_excess_pct)}" style="font-size:16px">${pct(ts.median_excess_pct)}</span></div>
-    <div class="kv"><span>Trefferquote</span><span>${nf(ts.hit_rate_pct, 0)} %</span></div>
-    <div class="kv"><span>Positionen eingefroren</span><span>${ts.entries ?? 0}</span></div>
-    <div class="kv"><span>Datenbasis</span>
-      <span class="${ts.meaningful ? '' : 'gold'}">${w} von ${need} Kalenderwochen</span></div>
-    <div class="bar" style="margin-top:12px"><i style="--w:${Math.min(100, w / need * 100)}%"></i></div>`;
 
   const nok = D.news_sources_ok || {};
   const qz = [
@@ -326,14 +320,17 @@ function renderMarkt(){
   $('#markt-quellen').innerHTML = qz +
     `<div class="kv"><span>Lauf vom</span><span>${datum(D.generated_at)}, vor ${tage} Tagen</span></div>
      <div class="kv"><span>Neu laufen lassen</span>
-       <span><code>scroll.command</code> · <a href="https://github.com/${CFG.repo}" target="_blank" rel="noopener">Repo ↗</a></span></div>`;
+       <span><span class="code">scroll.command</span> · <a href="https://github.com/${CFG.repo}" target="_blank" rel="noopener">Repo ↗</a></span></div>`;
+
+  renderUmfeld();
 }
 
-/* Kategorien im Schnitt des App Store: Überschrift, fünf Plätze, Mehr, Alle. */
+/* Kategorien, App-Store-artig: Überschrift, fünf Plätze, alle anzeigen. */
 function renderKatalog(){
   $('#katalog').innerHTML = Object.entries(KOERBE).map(([id, K]) => {
     const list = korbListe(id), n = gezeigt[id];
     const rest = list.length - n;
+    const rej = D[K.r] || [];
     return `<section class="kat ${K.cls}">
       <div class="kat-kopf">
         <span class="kat-farbe"></span>
@@ -349,6 +346,8 @@ function renderKatalog(){
       ${rest > 0 ? `<button class="mehr" data-mehr="${id}">Weitere ${Math.min(5, rest)} anzeigen
         <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
       </button>` : ''}
+      ${rej.length ? `<button class="ausgeschieden" data-warum="${id}">
+        <b>${rej.length}</b> ausgeschieden ›</button>` : ''}
     </section>`;
   }).join('');
 
@@ -358,37 +357,62 @@ function renderKatalog(){
     gezeigt[b.dataset.mehr] += 5; renderKatalog();
   });
   $$('#katalog .kat-alle').forEach(b => b.onclick = () => {
-    cohort = b.dataset.alle; renderScreening(); go('screening');
+    gezeigt[b.dataset.alle] = korbListe(b.dataset.alle).length; renderKatalog();
   });
+  $$('#katalog .ausgeschieden').forEach(b => b.onclick = () => warumSheet(b.dataset.warum));
 }
 
-/* ═══════════ SCREENING ═══════════ */
-function renderScreening(){
-  $('#cohort-chips').innerHTML = Object.entries(KOERBE).map(([k, v]) =>
-    `<button class="chip ${k === cohort ? 'on' : ''}" data-c="${k}">${esc(v.chip)}</button>`).join('');
-  $$('#cohort-chips .chip').forEach(b => b.onclick = () => { cohort = b.dataset.c; renderScreening(); });
-
-  const K = KOERBE[cohort], list = korbListe(cohort), rej = D[K.r] || [];
-  const kauf = list.filter(d => urteil(d.scorecard).k === 'go').length;
-
-  $('#cohort-tiles').innerHTML = [
-    [D[K.s] ?? '–', 'geprüft'], [list.length, 'Kandidaten'],
-    [kauf, 'davon Kauf'], [rej.length, 'ausgeschieden']
-  ].map(([n, t], i) => `<div class="tile" style="animation-delay:${i * 70}ms">
-      <div class="n">${n}</div><div class="k">${t}</div></div>`).join('');
-
-  $('#cohort-list').innerHTML = list.length ? list.map((d, i) => zeile(d, i)).join('')
-    : '<p class="muted">Keine Kandidaten in diesem Korb.</p>';
-  bindRows($('#cohort-list'), list);
-
+/* Warum ein Titel im jeweiligen Korb ausgeschieden ist. Früher eine eigene
+   Ansicht ("Screening"), jetzt ein Detailblatt, weil es Beleg ist und keine
+   eigene Bestimmung. */
+function warumSheet(id){
+  const K = KOERBE[id], rej = D[K.r] || [];
   const g = {};
   rej.forEach(r => (g[r.reason] = (g[r.reason] || 0) + 1));
-  $('#cohort-rejected').innerHTML = Object.entries(g).sort((a, b) => b[1] - a[1])
-    .map(([k, n]) => `<div class="kv"><span>${esc(label(GRUND, k))}</span><span>${n}</span></div>`).join('')
-    || '<p class="muted">Nichts ausgeschieden.</p>';
+  const zeilen = Object.entries(g).sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `<div class="kv"><span>${esc(label(GRUND, k))}</span><span>${n}</span></div>`).join('');
+  sheet(`<h2 class="sec">Ausgeschieden · ${esc(K.titel)}</h2>${zeilen || '<p class="muted">Nichts ausgeschieden.</p>'}
+    <div style="height:10px"></div>
+    <button class="btn ghost" style="width:100%" data-close>Schließen</button>`);
 }
 
-/* ═══════════ HISTORIE ═══════════ */
+/* ═══════════ MARKTUMFELD (früher eigener Tab "Makro") ═══════════ */
+function renderUmfeld(){
+  const acts = D.policy_acts || [];
+  const felder = [...new Set(acts.flatMap(a => a.fields || []))].sort();
+  $('#policy-chips').innerHTML =
+    `<button class="chip ${policyField === '*' ? 'on' : ''}" data-f="*">Alle ${acts.length}</button>` +
+    felder.map(f => `<button class="chip ${policyField === f ? 'on' : ''}" data-f="${esc(f)}">${esc(label(FELD, f))}</button>`).join('');
+  $$('#policy-chips .chip').forEach(b => b.onclick = () => { policyField = b.dataset.f; renderUmfeld(); });
+
+  const shown = (policyField === '*' ? acts : acts.filter(a => (a.fields || []).includes(policyField)))
+    .sort((a, b) => (b.publication_date || '').localeCompare(a.publication_date || '')).slice(0, 24);
+
+  $('#policy-list').innerHTML = `<h3>Rechtsakte</h3>` + (shown.length ? shown.map(a => `
+    <div class="row">
+      <a href="${esc(a.url)}" target="_blank" rel="noopener"
+         style="font-size:14.5px;line-height:1.4;display:block">${esc(a.title)}</a>
+      <span class="nm" style="white-space:normal;margin-top:5px">${datum(a.publication_date)}${
+        (a.countries || []).length ? ' · ' + esc(a.countries.join(', ')) : ''}</span>
+      <span class="tags">${(a.sectors || []).slice(0, 4).map(s => `<span class="tag">${esc(s)}</span>`).join('')}</span>
+    </div>`).join('') : '<p class="muted">Nichts in diesem Feld.</p>');
+
+  const news = D.news_items || [];
+  $('#news-list').innerHTML = `<h3>Notenbanken und Statistik</h3>` + (news.length ? news.slice(0, 16).map(n => `
+    <div class="row">
+      <a href="${esc(n.url)}" target="_blank" rel="noopener"
+         style="font-size:14.5px;line-height:1.4;display:block">${esc(n.title)}</a>
+      <span class="nm" style="margin-top:5px"><span class="acc">${esc(QUELLE[n.source] || n.source)}</span>
+        · ${datum(n.published)}</span>
+    </div>`).join('') : '<p class="muted">Keine Meldungen abrufbar.</p>');
+
+  const cal = D.calendar_events || [];
+  $('#cal-list').innerHTML = `<h3>Termine</h3>` + (cal.length
+    ? cal.map(c => `<div class="kv"><span>${esc(c.title)}</span><span>${datum(c.start)}</span></div>`).join('')
+    : '<p class="muted">Kalender nicht erreichbar.</p>');
+}
+
+/* ═══════════ VERLAUF ═══════════ */
 function isoWoche(d){
   const t = new Date(d + 'T12:00:00Z');
   const tag = t.getUTCDay() || 7;
@@ -422,7 +446,6 @@ function renderHistorie(){
   const stand = iso(D.generated_at);
   const w = ts.weeks || 0, need = (ts.weeks_needed || 0) + w || 12;
 
-  /* Gesamtstand in Euro, Median über alle Positionen */
   const euros = tr.map(e => inEuro(e, stand)).filter(Boolean);
   const med = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y);
     const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
@@ -433,23 +456,22 @@ function renderHistorie(){
     <div class="card">
       <div style="display:flex;align-items:flex-end;gap:16px">
         <div>
-          <div class="mono ${sign(medEur)}" style="font-size:40px;font-weight:600;line-height:1">
+          <div class="mono ${sign(medEur)}" style="font-size:40px;font-weight:750;letter-spacing:-.02em;line-height:1">
             ${pct(medEur)}</div>
-          <div class="muted mono" style="font-size:9px;letter-spacing:.16em;margin-top:7px">
-            MEDIAN IN EURO</div>
+          <div class="muted" style="font-size:12px;margin-top:6px">Median in Euro</div>
         </div>
         <div style="margin-left:auto;text-align:right">
-          <div class="mono ${sign(ts.median_excess_pct)}" style="font-size:21px">${pct(ts.median_excess_pct)}</div>
-          <div class="muted mono" style="font-size:9px;letter-spacing:.16em">GEGEN ${esc(ts.benchmark_symbol || 'IWO')}</div>
+          <div class="mono ${sign(ts.median_excess_pct)}" style="font-size:21px;font-weight:650">${pct(ts.median_excess_pct)}</div>
+          <div class="muted" style="font-size:11.5px">gegen ${esc(ts.benchmark_symbol || 'IWO')}</div>
         </div>
       </div>
       <div style="height:14px"></div>
       <div class="kv"><span>Positionen</span><span>${ts.entries ?? 0}</span></div>
-      <div class="kv"><span>Trefferquote</span><span>${nf(ts.hit_rate_pct, 0)} %</span></div>
+      <div class="kv"><span>Trefferquote</span><span>${nf(ts.hit_rate_pct, 0)} %</span></div>
       <div class="kv"><span>davon Währungseffekt</span>
         <span class="${sign(medFx)}">${pct(medFx, 2)}</span></div>
       <div class="kv"><span>Wechselkurs am Stand</span>
-        <span>${kursJetzt() ? '1 USD = ' + nf(kursJetzt(), 4) + ' €' : 'nicht geladen'}</span></div>
+        <span>${kursJetzt() ? '1 USD = ' + nf(kursJetzt(), 4) + ' €' : 'nicht geladen'}</span></div>
       <div class="kv"><span>Datenbasis</span>
         <span class="${ts.meaningful ? '' : 'gold'}">${w} von ${need} Kalenderwochen</span></div>
       <div class="bar" style="margin-top:12px"><i style="--w:${Math.min(100, w / need * 100)}%"></i></div>
@@ -460,10 +482,10 @@ function renderHistorie(){
       umgerechnet, weil in Euro gehandelt wird. Der Währungsanteil steht oben getrennt,
       sonst würde eine Dollarschwäche wie ein schlechter Pick aussehen. Der Vergleich
       gegen ${esc(ts.benchmark_name || 'IWO')} bleibt in Dollar, damit er den
-      Währungseffekt nicht doppelt zählt.</p>
+      Währungseffekt nicht doppelt zählt. Unter ${need} Kalenderwochen ist die Kennzahl
+      ausdrücklich Rauschen, keine Aussage.</p>
     </div>`;
 
-  /* Raster: Wochen oder Monate */
   $('#hist-chips').innerHTML = [['woche', 'Wochen'], ['monat', 'Monate']]
     .map(([k, t]) => `<button class="chip ${histRaster === k ? 'on' : ''}" data-r="${k}">${t}</button>`).join('');
   $$('#hist-chips .chip').forEach(b => b.onclick = () => { histRaster = b.dataset.r; renderHistorie(); });
@@ -485,11 +507,6 @@ function renderHistorie(){
   const sortiert = Object.values(gruppen).sort((a, b) => String(a.key).localeCompare(String(b.key)));
 
   $('#hist-liste').innerHTML = sortiert.map((g, i) => {
-    /* Ein Block je Korb, mit dem für diesen Korb richtigen Benchmark: der
-       große Korb misst sich am S&P 500, Wachstum und Frühphase am IWO. Ein
-       gemeinsamer Wochen-Benchmark wäre für zwei der drei Körbe falsch.
-       `e.korb` ist das gespeicherte Feld aus dem Lauf; korbVon() bleibt nur
-       als Rückfall für ältere Einträge ohne dieses Feld. */
     const nachKorb = {};
     [...g.eintraege].sort((a, b) => (a.rank || 99) - (b.rank || 99)).forEach(e => {
       const kb = e.korb || korbVon(e.symbol) || 'klein';
@@ -502,12 +519,12 @@ function renderHistorie(){
       const bmEin = top[0]?.benchmark_at_entry;
       const bmRet = top[0]?.benchmark_return_pct;
 
-      const posHtml = top.map((e, j) => {
+      const posHtml = top.map(e => {
         const E = inEuro(e, stand);
         const jetzt = E ? eur(E.jetzt) : nf(e.price_now ?? e.price_at_entry, 2) + ' $';
         const ein   = E ? eur(E.ein)   : nf(e.price_at_entry, 2) + ' $';
         const delta = E ? E.rendite : e.return_pct;
-        return `<div class="pos" style="animation:zeileRein .42s ${j * 55}ms backwards">
+        return `<div class="pos">
           <span class="pos-mitte">
             <span class="pos-top">
               <span class="sym">${esc(e.symbol)}</span>
@@ -543,42 +560,6 @@ function renderHistorie(){
   }).reverse().join('');
 }
 
-/* ═══════════ MAKRO ═══════════ */
-function renderMakro(){
-  const acts = D.policy_acts || [];
-  const felder = [...new Set(acts.flatMap(a => a.fields || []))].sort();
-  $('#policy-chips').innerHTML =
-    `<button class="chip ${policyField === '*' ? 'on' : ''}" data-f="*">Alle ${acts.length}</button>` +
-    felder.map(f => `<button class="chip ${policyField === f ? 'on' : ''}" data-f="${esc(f)}">${esc(label(FELD, f))}</button>`).join('');
-  $$('#policy-chips .chip').forEach(b => b.onclick = () => { policyField = b.dataset.f; renderMakro(); });
-
-  const shown = (policyField === '*' ? acts : acts.filter(a => (a.fields || []).includes(policyField)))
-    .sort((a, b) => (b.publication_date || '').localeCompare(a.publication_date || '')).slice(0, 40);
-
-  $('#policy-list').innerHTML = shown.length ? shown.map((a, i) => `
-    <div class="row" style="animation-delay:${Math.min(i * 40, 400)}ms">
-      <a href="${esc(a.url)}" target="_blank" rel="noopener"
-         style="font-size:13.5px;line-height:1.42;display:block">${esc(a.title)}</a>
-      <span class="nm" style="white-space:normal;margin-top:5px">${datum(a.publication_date)}${
-        (a.countries || []).length ? ' · ' + esc(a.countries.join(', ')) : ''}</span>
-      <span class="tags">${(a.sectors || []).slice(0, 4).map(s => `<span class="tag">${esc(s)}</span>`).join('')}</span>
-    </div>`).join('') : '<p class="muted">Nichts in diesem Feld.</p>';
-
-  const news = D.news_items || [];
-  $('#news-list').innerHTML = news.length ? news.slice(0, 30).map((n, i) => `
-    <div class="row" style="animation-delay:${Math.min(i * 40, 400)}ms">
-      <a href="${esc(n.url)}" target="_blank" rel="noopener"
-         style="font-size:13.5px;line-height:1.42;display:block">${esc(n.title)}</a>
-      <span class="nm" style="margin-top:5px"><span class="acc mono">${esc(QUELLE[n.source] || n.source)}</span>
-        · ${datum(n.published)}</span>
-    </div>`).join('') : '<p class="muted">Keine Meldungen abrufbar.</p>';
-
-  const cal = D.calendar_events || [];
-  $('#cal-list').innerHTML = cal.length
-    ? cal.map(c => `<div class="kv"><span>${esc(c.title)}</span><span>${datum(c.start)}</span></div>`).join('')
-    : '<p class="muted">Kalender nicht erreichbar.</p>';
-}
-
 /* ═══════════ DEPOT ═══════════ */
 const b64dec = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function schluessel(pw, salt, iter){
@@ -589,13 +570,13 @@ async function schluessel(pw, salt, iter){
 function depotLock(){
   $('#depot-body').innerHTML = `
     <div class="lock">
-      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="1.4"
-           stroke-linecap="round" style="filter:drop-shadow(0 0 10px rgba(125,211,252,.5))">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="1.5"
+           stroke-linecap="round">
         <rect x="3.5" y="9.5" width="17" height="11" rx="2.2"/>
         <path d="M8 9.5V6.4a4 4 0 0 1 8 0v3.1"/><path d="M12 13.6v2.8"/>
       </svg>
-      <h3 style="margin:15px 0 5px">Depot verschlossen</h3>
-      <p class="muted" style="max-width:330px;margin:0 auto;font-size:13px">
+      <h3 style="margin:16px 0 5px">Depot verschlossen</h3>
+      <p class="muted" style="max-width:330px;margin:0 auto;font-size:14px">
         Der Bestand liegt auf dieser öffentlichen Seite nur als AES-256-GCM-Block.</p>
       <form id="unlock">
         <input type="password" id="pw" placeholder="Passwort" autocomplete="current-password">
@@ -617,6 +598,99 @@ function depotLock(){
     }
   };
 }
+
+/* Näherungsweise Gewichtung einzelner Aktien INNERHALB der gehaltenen ETF.
+   Keine Live-Quelle: aus bekannten Indexzusammensetzungen, Stand ungefähr
+   Sommer 2026, gerundet. Muss ersetzt werden, sobald ein echter Datenlauf
+   Fondsdurchschauwerte mitbringt (Fondsanbieter-Factsheet oder Index-API).
+   Reihenfolge ist wichtig: "Information Tech" und "NASDAQ100" müssen vor
+   dem allgemeinen "S&P 500" geprüft werden, weil ihr Fondsname diesen
+   Teilstring ebenfalls enthalten kann. */
+const ETF_GEWICHTE = new Map([
+  ['Information Tech', {NVDA:15, MSFT:13, AAPL:13}],
+  ['MSCI World',       {NVDA:5, MSFT:4.5, AAPL:4.3, GOOGL:2.5, TSLA:1}],
+  ['MSCI EM IMI',      {TSM:9}],
+  ['NASDAQ100',        {NVDA:9, MSFT:7.8, AAPL:7.5, GOOGL:5, TSLA:2.5}],
+  ['S&P 500',          {NVDA:7, MSFT:6.3, AAPL:6.5, GOOGL:3.8, TSLA:1.8}],
+]);
+function fondsFuer(name){
+  for (const [schluessel, gewichte] of ETF_GEWICHTE)
+    if ((name || '').includes(schluessel)) return gewichte;
+  return null;
+}
+function durchschau(h){
+  const etfs = h.filter(x => x.kind === 'etf');
+  const aktien = h.filter(x => x.kind === 'aktie' && x.symbol);
+  const symbole = new Set(aktien.map(a => a.symbol));
+  ETF_GEWICHTE.forEach(g => Object.keys(g).forEach(s => symbole.add(s)));
+
+  return [...symbole].map(sym => {
+    const direkt = aktien.find(a => a.symbol === sym);
+    let indirekt = 0;
+    etfs.forEach(e => {
+      const g = fondsFuer(e.name);
+      if (g && g[sym] != null) indirekt += (e.weight || 0) / 100 * g[sym];
+    });
+    const brutto = direkt?.weight || 0;
+    return {sym, name: direkt?.name || sym, direkt: brutto, indirekt,
+             gesamt: brutto + indirekt};
+  }).filter(r => r.gesamt >= 0.3).sort((a, b) => b.gesamt - a.gesamt);
+}
+function renderDurchschau(h){
+  const rows = durchschau(h);
+  if (!rows.length) return '';
+  const top2 = rows.slice(0, 2).reduce((s, r) => s + r.gesamt, 0);
+  const top2direkt = rows.slice(0, 2).reduce((s, r) => s + r.direkt, 0);
+  return `
+    <h2 class="sec">Durchschau durch die ETF</h2>
+    <div class="card">
+      <table class="durchschau">
+        <tr><th>Titel</th><th>direkt</th><th>über ETF</th><th>gesamt</th></tr>
+        ${rows.map(r => `<tr>
+          <td>${esc(r.sym)}</td>
+          <td class="brutto">${nf(r.direkt, 1)} %</td>
+          <td class="brutto">${r.indirekt >= 0.05 ? '+' + nf(r.indirekt, 1) + ' %' : '–'}</td>
+          <td class="netto">${nf(r.gesamt, 1)} %</td>
+        </tr>`).join('')}
+      </table>
+      <p class="hinweis">Die direkte Gewichtung zeigt kein Depot vollständig: die beiden größten
+      Positionen machen zusammen ${nf(top2direkt, 0)} % direkt aus, durchgerechnet mit den
+      Fondsanteilen aber rund ${nf(top2, 0)} %. Die Fondsgewichte sind Näherungen aus bekannten
+      Indexzusammensetzungen, keine Live-Abfrage, und sollten mit einem echten Datenlauf
+      nachgezogen werden.</p>
+    </div>`;
+}
+
+/* Positionsakte: hält beim Kauf fest, welche Kennzahlen den Rang getragen
+   haben, prüft wöchentlich, ob der Grund noch gilt. Baustein `position.py`
+   ist fertig und getestet, aber noch nicht an einen Datenlauf angeschlossen,
+   siehe Projektnotiz "Zielbild-Kauf-und-Verkauf". Sobald `dp.positionen`
+   Einträge liefert, erscheinen sie hier mit Halten/Prüfen/Verkaufen; bis
+   dahin steht nur die Erklärung. */
+function renderPositionen(dp){
+  const pos = dp.positionen || [];
+  if (!pos.length){
+    return `<h2 class="sec">Kauf- und Verkaufslogik</h2>
+      <div class="card">
+        <h3>Noch keine Positionsakte</h3>
+        <p>Für jeden Kauf hält die Seite künftig fest, welche Kennzahlen ihn begründet
+        haben, und prüft wöchentlich, ob der Grund noch gilt. Verkaufsvorschläge
+        erscheinen dann hier, mit der Begründung dahinter, nicht als starres Kursziel.
+        Das folgt mit dem nächsten Datenlauf.</p>
+      </div>`;
+  }
+  const FARBE = {verkaufen:'warn', pruefen:'mid', halten:'go'};
+  const TEXT  = {verkaufen:'Verkaufen', pruefen:'Prüfen', halten:'Halten'};
+  return `<h2 class="sec">Kauf- und Verkaufslogik</h2><div class="card">${
+    pos.map(p => `<div class="row">
+      <span class="rhead">
+        <span class="sym">${esc(p.symbol)}</span>
+        <span class="tag ${FARBE[p.action] || 'low'}" style="margin-left:auto">${esc(TEXT[p.action] || p.action)}</span>
+      </span>
+      <span class="nm" style="white-space:normal;margin-top:6px">${esc(p.summary || '')}</span>
+    </div>`).join('')}</div>`;
+}
+
 function depotZeigen(dp){
   const h = dp.holdings || [], p = dp.plan || {};
   const aktien = h.filter(x => x.kind === 'aktie'), etfs = h.filter(x => x.kind === 'etf');
@@ -625,11 +699,11 @@ function depotZeigen(dp){
   const imDepot = new Set(h.map(x => (x.symbol || '').toUpperCase()).filter(Boolean));
   const doppelt = alleKandidaten().filter(d => imDepot.has(d.candidate.symbol.toUpperCase()));
 
-  const liste = a => [...a].sort((x, y) => (y.weight || 0) - (x.weight || 0)).map((x, i) => `
-    <div class="row" style="animation-delay:${Math.min(i * 50, 400)}ms">
+  const liste = a => [...a].sort((x, y) => (y.weight || 0) - (x.weight || 0)).map(x => `
+    <div class="row">
       <span class="rhead">
         <span class="sym">${esc(x.symbol || x.name)}</span>
-        <span class="score">${nf(x.weight, 1)} %</span>
+        <span class="score">${nf(x.weight, 1)} %</span>
       </span>
       ${x.symbol ? `<span class="nm">${esc(x.name)}</span>` : ''}
       <span class="bar"><i style="--w:${Math.min(100, (x.weight || 0) * 3.5)}%"></i></span>
@@ -644,6 +718,8 @@ function depotZeigen(dp){
       <div class="tile"><div class="n">${nf(anteil(aktien), 0)}<small>%</small></div><div class="k">Einzelaktien</div></div>
       <div class="tile"><div class="n">${nf(anteil(etfs), 0)}<small>%</small></div><div class="k">ETF</div></div>
     </div>
+    ${renderDurchschau(h)}
+    ${renderPositionen(dp)}
     ${doppelt.length ? `<h2 class="sec">Bereits im Bestand</h2><div class="card">
       <p>${doppelt.length} Wert${doppelt.length > 1 ? 'e' : ''} aus dem aktuellen Screening liegen schon im Depot.</p>
       <div style="height:8px"></div>${doppelt.map((d, i) => zeile(d, i)).join('')}</div>` : ''}
@@ -651,7 +727,7 @@ function depotZeigen(dp){
     ${etfs.length ? `<h2 class="sec">ETF</h2><div class="card">${liste(etfs)}</div>` : ''}
     ${planPos.length ? `<h2 class="sec">Sparplan</h2><div class="card">
       ${planPos.map(x => `<div class="kv"><span>${esc(x.name || x.symbol)}</span>
-        <span>${x.amount != null ? eur(x.amount) : nf(x.weight, 1) + ' %'}</span></div>`).join('')}
+        <span>${x.amount != null ? eur(x.amount) : nf(x.weight, 1) + ' %'}</span></div>`).join('')}
       ${p.monthly != null ? `<div class="kv"><span>Summe im Monat</span><span>${eur(p.monthly)}</span></div>` : ''}
     </div>` : ''}
     <div class="center" style="margin:20px 0">
@@ -691,7 +767,7 @@ async function start(){
     const d = iso(e.date); return !m || d < m ? d : m; }, null);
   if (fruehestes) await ladeFX(fruehestes);
 
-  renderMarkt(); renderScreening(); renderHistorie(); renderMakro(); depotLock();
+  renderKandidaten(); renderHistorie(); depotLock();
   puls();
 
   const ausHash = () => {

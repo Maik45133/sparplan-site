@@ -402,3 +402,97 @@ h2.sec span{color:var(--acc)}
 .spark circle{fill:var(--acc);opacity:0;animation:sparkPunkt .3s ease .1s 1 forwards;animation-delay:1.5s}
 @keyframes sparkZeichnen{to{stroke-dashoffset:0}}
 @keyframes sparkPunkt{to{opacity:1}}
+
+/* ═════ Kurs-Szene (scroll-gesteuerte Sequenz) ═════
+   Vorbild ist die Bildfolge auf apple.com/macbook-pro, die beim Scrollen
+   vorwärts und rückwärts durchläuft. Die Sektion ist mehrere Bildschirme
+   hoch, ihr Inhalt klebt darin fest, und szene.js koppelt die Zeichnung
+   an die Scrollposition. Ohne JS bleibt hier nichts Kaputtes stehen:
+   die Sektion ist dann leer und fällt auf null zusammen. */
+.szene{position:relative;height:340vh;background:
+  radial-gradient(ellipse 70% 45% at 50% 30%,var(--acc-glow),transparent 72%),var(--bg)}
+.szene:empty{display:none}
+.szene-sticky{position:sticky;top:0;height:100vh;overflow:hidden}
+.szene-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.szene-text{position:absolute;inset:0;pointer-events:none;
+  max-width:var(--content-w);margin:0 auto;padding:0 var(--pad)}
+.szene-schritt{position:absolute;top:50%;transform:translateY(0);left:var(--pad);
+  right:var(--pad);max-width:340px;opacity:0;will-change:opacity,transform}
+.szene-schritt h2{margin:8px 0 12px;font-size:clamp(28px,4.2vw,44px);font-weight:750;
+  letter-spacing:-.028em;line-height:1.06;color:var(--ink)}
+.szene-schritt .szene-p{margin:0;font-size:15px;line-height:1.6;color:var(--ink2);max-width:330px}
+.szene-fuss{position:absolute;left:0;right:0;margin:0;text-align:center;
+  font-size:11.5px;color:var(--ink3);
+  bottom:calc(88px + env(safe-area-inset-bottom))}
+@media(max-width:759px){
+  .szene{height:300vh}
+  .szene-schritt{top:12%;max-width:none;text-align:center}
+  .szene-schritt .szene-p{margin:0 auto;font-size:14px}
+  .szene-schritt .kicker{text-align:center}
+}
+@media(min-width:760px){
+  .szene-schritt{top:50%;margin-top:-90px}
+}
+/* Ohne Bewegungswunsch: keine Scrollstrecke, ein Bild, fertig. */
+.szene.statisch{height:100vh}
+.szene.statisch .szene-schritt{position:static;opacity:1;margin:0}
+
+/* ═════ Feinschliff Bewegung ═════ */
+
+/* Headline: die Zeilen steigen versetzt ein statt gemeinsam aufzupoppen.
+   Wird von app.js in <span class="zeile"> zerlegt. */
+.headline .zeile{display:block;overflow:hidden}
+.headline .zeile > span{display:block;transform:translateY(105%);
+  animation:zeileRein .95s var(--feder) forwards}
+.headline .zeile:nth-child(2) > span{animation-delay:.10s}
+@keyframes zeileRein{to{transform:none}}
+
+/* Parallax auf den Bild-Text-Blöcken: das Bild wandert langsamer als der
+   Rest, die Tiefe entsteht ohne zusätzliche Grafik. --par wird von app.js
+   gesetzt und läuft von -1 bis 1, während der Block durchs Bild zieht. */
+.feature-media{overflow:hidden}
+.feature-media img{transform:scale(1.14) translateY(calc(var(--par,0) * 22px));
+  will-change:transform}
+
+/* Karten neigen sich leicht zum Zeiger. Nur auf Geräten mit echtem Hover,
+   und nur so weit, dass es als Tiefe wahrgenommen wird, nicht als Effekt. */
+@media(hover:hover) and (min-width:760px){
+  .kippbar{transform-style:preserve-3d;
+    transition:transform .3s var(--feder),border-color .28s,box-shadow .28s}
+  .kippbar.kippt{transition:transform .08s linear,border-color .28s,box-shadow .28s;
+    transform:perspective(760px)
+      rotateX(calc(var(--ky,0) * -4deg)) rotateY(calc(var(--kx,0) * 4deg))
+      translateY(-3px) scale(1.012)}
+}
+
+/* Primärknopf: ein Lichtstreifen zieht beim Überfahren einmal durch. */
+.btn{position:relative;overflow:hidden;isolation:isolate}
+.btn::after{content:'';position:absolute;inset:0;z-index:-1;
+  background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.42) 50%,transparent 62%);
+  transform:translateX(-120%);transition:transform .6s var(--feder)}
+@media(hover:hover){.btn:hover::after{transform:translateX(120%)}}
+
+/* Chips: der aktive Zustand bekommt einen kurzen Federstoß statt hart
+   umzuspringen. */
+@keyframes chipAn{0%{transform:scale(.9)}55%{transform:scale(1.06)}100%{transform:scale(1)}}
+.chip.on{animation:chipAn .34s var(--feder)}
+
+/* Detailblatt: die Blöcke darin laufen gestaffelt ein, damit das Blatt
+   sich öffnet statt fertig dazustehen. */
+.sheet.on .panel > #sheet-body > *{animation:blattRein .5s var(--feder) backwards}
+.sheet.on .panel > #sheet-body > *:nth-child(1){animation-delay:.04s}
+.sheet.on .panel > #sheet-body > *:nth-child(2){animation-delay:.09s}
+.sheet.on .panel > #sheet-body > *:nth-child(3){animation-delay:.14s}
+.sheet.on .panel > #sheet-body > *:nth-child(4){animation-delay:.19s}
+.sheet.on .panel > #sheet-body > *:nth-child(n+5){animation-delay:.23s}
+@keyframes blattRein{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+/* Dünner Fortschrittsfaden unter der Kopfleiste. Zeigt nur, wie weit die
+   Ansicht gelesen ist, sonst nichts. */
+.fortschritt{position:absolute;left:0;bottom:-1px;height:2px;width:100%;
+  transform:scaleX(var(--f,0));transform-origin:0 50%;
+  background:linear-gradient(90deg,var(--acc),var(--lila));opacity:.9}
+
+/* Stat-Kacheln: die Zahl kommt eine Spur nach der Kachel. */
+.tile.reveal.in .n{animation:zahlRein .55s var(--feder) .12s backwards}
+@keyframes zahlRein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}

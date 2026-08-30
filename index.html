@@ -78,6 +78,10 @@
 
   <div class="tiles" id="markt-tiles"></div>
 
+  <!-- Scroll-gesteuerte Kurs-Sequenz. Inhalt kommt aus assets/szene.js,
+       ohne JS bleibt hier nichts stehen (.szene:empty ist ausgeblendet). -->
+  <section id="kurs-szene" aria-label="Wie aus Kursen ein Score wird"></section>
+
   <div id="katalog"></div>
 
   <!-- Dunkle Vergleichs-Sektion: Score je Korb -->
@@ -212,6 +216,7 @@
 <nav class="tabbar" id="tabbar"></nav>
 
 <script src="assets/holo-core.js"></script>
+<script src="assets/szene.js" defer></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

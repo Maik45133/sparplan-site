@@ -71,28 +71,58 @@ function animZahl(el, ziel, {decimals = 0, fmt} = {}){
   })(t0);
 }
 
+/* Was beim Sichtbarwerden eines Elements passiert: einblenden, eine
+   enthaltene Zahl hochzählen lassen, enthaltene Balken auf ihren Zielwert
+   setzen. Einzelbeobachter und Gruppenbeobachter benutzen dasselbe, damit
+   eine Kachel in einer Reihe sich genauso verhält wie eine einzelne. */
+function aufdecken(el){
+  el.classList.add('in');
+  const zEl = el.matches('[data-count]') ? el : el.querySelector('[data-count]');
+  if (zEl) animZahl(zEl, parseFloat(zEl.dataset.count), {decimals:+(zEl.dataset.decimals || 0), fmt:zEl.dataset.fmt});
+  if (el.dataset.w != null){
+    const fill = el.querySelector('.compare-fill');
+    if (fill) fill.style.setProperty('--w', el.dataset.w + '%');
+  }
+  $$('.bar i[data-w]', el).forEach(i => i.style.setProperty('--w', i.dataset.w + '%'));
+}
+
 const revealBeobachter = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
   entries.forEach(e => {
     if (!e.isIntersecting) return;
-    const el = e.target;
-    el.classList.add('in');
-    const zEl = el.matches('[data-count]') ? el : el.querySelector('[data-count]');
-    if (zEl) animZahl(zEl, parseFloat(zEl.dataset.count), {decimals:+(zEl.dataset.decimals || 0), fmt:zEl.dataset.fmt});
-    if (el.dataset.w != null){
-      const fill = el.querySelector('.compare-fill');
-      if (fill) fill.style.setProperty('--w', el.dataset.w + '%');
-    }
-    $$('.bar i[data-w]', el).forEach(i => i.style.setProperty('--w', i.dataset.w + '%'));
-    revealBeobachter.unobserve(el);
+    aufdecken(e.target);
+    revealBeobachter.unobserve(e.target);
   });
 }, {threshold:0.3, rootMargin:'0px 0px -30px 0px'}) : null;
 
 function beobachte(el){
   if (!el) return;
-  if (!revealBeobachter){ el.classList.add('in'); return; }
+  if (!revealBeobachter){ aufdecken(el); return; }
   revealBeobachter.observe(el);
 }
 const beobachteAlle = (root, sel) => $$(sel, root).forEach(beobachte);
+
+/* Reihen, die seitlich aus dem Bild ragen (die Highlight-Galerie wischt
+   horizontal), dürfen nicht Karte für Karte beobachtet werden: was rechts
+   außerhalb liegt, bliebe sonst unsichtbar stehen. Stattdessen hängt die
+   ganze Reihe an einem Beobachter und die Karten laufen gestaffelt ein. */
+const gruppeBeobachter = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (!e.isIntersecting) return;
+    [...e.target.children].forEach((kind, i) => {
+      kind.style.transitionDelay = (i * 0.07).toFixed(2) + 's';
+      /* Die Zahl der letzten Karte soll nicht sofort loslaufen, während die
+         Karte selbst noch einblendet: erst die Karte, dann ihr Inhalt. */
+      setTimeout(() => aufdecken(kind), i * 70);
+    });
+    gruppeBeobachter.unobserve(e.target);
+  });
+}, {threshold:0.15}) : null;
+
+function beobachteGruppe(el){
+  if (!el) return;
+  if (!gruppeBeobachter){ [...el.children].forEach(aufdecken); return; }
+  gruppeBeobachter.observe(el);
+}
 
 /* Balken innerhalb eines Detailblatts (Sheet): kein Scrollen nötig, das
    Blatt ist sofort ganz sichtbar. Zwei rAF sorgen dafür, dass der Browser
@@ -102,6 +132,93 @@ function aktiviereBalken(root){
   requestAnimationFrame(() => requestAnimationFrame(() => {
     $$('.bar i[data-w]', root).forEach(i => i.style.setProperty('--w', i.dataset.w + '%'));
   }));
+}
+
+/* ───────── Feinschliff der Bewegung ─────────
+   Alles hier ist rein optisch und hängt an keiner Berechnung. Bei
+   prefers-reduced-motion wird nichts davon eingehängt. */
+
+/* Headline zeilenweise: die durch <br> getrennten Zeilen bekommen je einen
+   Rahmen mit overflow:hidden, aus dem der Text hochsteigt. Das Markup wird
+   hier erzeugt statt in index.html, damit die Überschrift ohne JS eine
+   ganz normale Überschrift bleibt. */
+function headlineZerlegen(h1){
+  if (!h1 || h1.dataset.zerlegt) return;
+  const zeilen = h1.innerHTML.split(/<br\s*\/?>/i);
+  if (zeilen.length < 2) return;
+  h1.innerHTML = zeilen
+    .map(z => `<span class="zeile"><span>${z.trim()}</span></span>`).join('');
+  h1.dataset.zerlegt = '1';
+}
+
+/* Parallax: --par läuft von 1 (Block kommt von unten ins Bild) über 0
+   (mittig) nach -1 (verlässt es oben). Ein einziger Beobachter und ein
+   gedrosselter Scroll-Handler für alle Blöcke zusammen. */
+const parallaxBloecke = new Set();
+let parallaxLaeuft = false;
+function parallaxSchritt(){
+  parallaxLaeuft = false;
+  const h = innerHeight;
+  parallaxBloecke.forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (r.bottom < -200 || r.top > h + 200) return;
+    const mitte = r.top + r.height / 2;
+    el.style.setProperty('--par', ((mitte - h / 2) / (h / 2)).toFixed(3));
+  });
+}
+function parallaxAnstoss(){
+  if (parallaxLaeuft) return;
+  parallaxLaeuft = true;
+  requestAnimationFrame(parallaxSchritt);
+}
+let parallaxVerdrahtet = false;
+function parallax(el){
+  if (!el || REDUZIERT) return;
+  parallaxBloecke.add(el);
+  if (!parallaxVerdrahtet){
+    parallaxVerdrahtet = true;
+    addEventListener('scroll', parallaxAnstoss, {passive:true});
+    addEventListener('resize', parallaxAnstoss);
+  }
+  parallaxAnstoss();
+}
+
+/* Karten neigen sich zum Zeiger. Die Werte gehen als --kx/--ky ins CSS,
+   die eigentliche Transformation macht der Stylesheet, damit sie mit den
+   übrigen Hover-Regeln in einer Kaskade steht. */
+function kippbar(el){
+  if (!el || REDUZIERT || !matchMedia('(hover:hover)').matches || innerWidth < 760) return;
+  el.classList.add('kippbar');
+  el.addEventListener('pointermove', e => {
+    const r = el.getBoundingClientRect();
+    el.style.setProperty('--kx', (((e.clientX - r.left) / r.width) * 2 - 1).toFixed(3));
+    el.style.setProperty('--ky', (((e.clientY - r.top) / r.height) * 2 - 1).toFixed(3));
+    el.classList.add('kippt');
+  });
+  el.addEventListener('pointerleave', () => {
+    el.classList.remove('kippt');
+    el.style.setProperty('--kx', 0); el.style.setProperty('--ky', 0);
+  });
+}
+const kippbarAlle = (root, sel) => $$(sel, root).forEach(kippbar);
+
+/* Lesefortschritt der aktiven Ansicht als dünner Faden unter der Leiste. */
+function fortschrittsfaden(){
+  if (REDUZIERT) return;
+  const bar = document.createElement('div');
+  bar.className = 'fortschritt';
+  $('.topbar')?.appendChild(bar);
+  let warte = false;
+  const mess = () => {
+    warte = false;
+    const max = document.documentElement.scrollHeight - innerHeight;
+    bar.style.setProperty('--f', max > 40 ? Math.min(1, scrollY / max).toFixed(4) : 0);
+  };
+  addEventListener('scroll', () => {
+    if (warte) return; warte = true; requestAnimationFrame(mess);
+  }, {passive:true});
+  addEventListener('resize', mess);
+  mess();
 }
 
 const KOMPONENTE = {
@@ -453,7 +570,8 @@ function renderKandidaten(){
   ].map(([n, d, k]) => `<div class="tile reveal">
       <div class="n">${n == null ? '–' : `<span data-count="${n}" data-decimals="${d}">0</span>`}</div>
       <div class="k">${k}</div></div>`).join('');
-  beobachteAlle($('#markt-tiles'), '.tile');
+  beobachteGruppe($('#markt-tiles'));
+  kippbarAlle($('#markt-tiles'), '.tile');
 
   renderKatalog();
   renderKorbVergleich();
@@ -555,7 +673,8 @@ function renderKorbKarten(){
       <div class="cc-kv"><span>Kaufkandidaten</span><b>${z.kauf}</b></div>
       <div class="cc-kv"><span>Bester</span><b>${z.bester ? esc(z.bester.candidate.symbol) : '–'}</b></div>
     </div>`).join('');
-  beobachteAlle(el, '.compare-card');
+  beobachteGruppe(el);
+  kippbarAlle(el, '.compare-card');
 }
 
 /* Warum ein Titel im jeweiligen Korb ausgeschieden ist. Früher eine eigene
@@ -1083,6 +1202,7 @@ function depotZeigen(dp){
   bindRows($('#depot-body'), alleKandidaten());
   bindVerkaufen($('#depot-body'));
   beobachteAlle($('#depot-body'), '.tile, .compare-card, .compare-row');
+  kippbarAlle($('#depot-body'), '.tile, .compare-card');
 }
 
 /* ───────── Hologramm-Energie ───────── */
@@ -1118,7 +1238,13 @@ async function start(){
 
   renderKandidaten(); renderHistorie(); depotLock();
   puls();
-  beobachteAlle(document, '.highlight, .feature, .security-card');
+  beobachteGruppe($('#highlights'));
+  beobachteGruppe($('.security-grid'));
+  beobachteAlle(document, '.feature');
+  kippbarAlle(document, '.highlight, .security-card');
+  $$('.feature-media').forEach(parallax);
+  $$('.headline').forEach(headlineZerlegen);
+  fortschrittsfaden();
 
   const ausHash = () => {
     const h = location.hash.slice(1);

@@ -45,8 +45,8 @@ def main() -> None:
     print(f"  {len(daten.get('holdings', []))} Positionen")
 
     pw = getpass.getpass("Passwort: ")
-    if len(pw) < 8:
-        sys.exit("Mindestens 8 Zeichen. Diese Seite ist öffentlich erreichbar.")
+    if len(pw) < 5:
+        sys.exit("Mindestens 5 Zeichen. Diese Seite ist öffentlich erreichbar.")
     if pw != getpass.getpass("Wiederholen: "):
         sys.exit("Stimmt nicht überein.")
 

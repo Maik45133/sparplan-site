@@ -1,7 +1,9 @@
 /* Hülle aus dem Cache, Daten immer frisch. Bei jedem Deploy V hochzählen. */
-const V = 'sparplan-v7';
+const V = 'sparplan-v8';
 const HUELLE = ['./', './index.html', './assets/style.css', './assets/app.js',
-                './assets/holo-core.js', './manifest.webmanifest'];
+                './assets/holo-core.js', './manifest.webmanifest',
+                './assets/img/methodik-kandidaten.jpg', './assets/img/methodik-verlauf.jpg',
+                './assets/img/sicherheit-depot.jpg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(HUELLE)).then(() => self.skipWaiting()));

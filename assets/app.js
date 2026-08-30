@@ -388,6 +388,8 @@ function renderKandidaten(){
   ].map(([n, k]) => `<div class="tile"><div class="n">${n}</div><div class="k">${k}</div></div>`).join('');
 
   renderKatalog();
+  renderKorbVergleich();
+  renderKorbKarten();
 
   const nok = D.news_sources_ok || {};
   const qz = [
@@ -411,7 +413,7 @@ function renderKatalog(){
     const list = korbListe(id), n = gezeigt[id];
     const rest = list.length - n;
     const rej = D[K.r] || [];
-    return `<section class="kat ${K.cls}">
+    return `<section class="kat ${K.cls}" id="kat-${id}">
       <div class="kat-kopf">
         <span class="kat-farbe"></span>
         <div>
@@ -440,6 +442,51 @@ function renderKatalog(){
     gezeigt[b.dataset.alle] = korbListe(b.dataset.alle).length; renderKatalog();
   });
   $$('#katalog .ausgeschieden').forEach(b => b.onclick = () => warumSheet(b.dataset.warum));
+}
+
+/* Rein darstellende Zusammenfassung je Korb, additiv zu den bestehenden
+   Listen: kein neuer Rechenweg, nur Durchschnitt und Bestenwert aus den
+   ohnehin vorhandenen Scorecards. Speist die dunkle Vergleichs-Sektion
+   ("Score je Korb") und die abschließenden Vergleichskarten. */
+function korbKennzahlen(id){
+  const list = korbListe(id);
+  if (!list.length) return {id, K:KOERBE[id], n:0, schnitt:null, kauf:0, bester:null};
+  const schnitt = list.reduce((s, d) => s + d.scorecard.total, 0) / list.length;
+  const kauf = list.filter(d => urteil(d.scorecard).k === 'go').length;
+  return {id, K:KOERBE[id], n:list.length, schnitt, kauf, bester:list[0]};
+}
+
+function renderKorbVergleich(){
+  const el = $('#korb-vergleich');
+  if (!el) return;
+  const zeilen = Object.keys(KOERBE).map(korbKennzahlen);
+  const max = Math.max(1, ...zeilen.map(z => z.schnitt || 0));
+  el.innerHTML = zeilen.map(z => `
+    <div class="compare-row">
+      <div class="compare-top">
+        <span class="compare-label">${esc(z.K.titel)}</span>
+        <span class="compare-sub">${esc(z.K.unter)} · ${z.n} Kandidaten</span>
+        <span class="compare-num">${nf(z.schnitt, 1)}</span>
+      </div>
+      <div class="compare-track"><span class="compare-fill ${z.K.cls}"
+        style="width:${z.schnitt ? Math.max(3, z.schnitt / max * 100) : 0}%"></span></div>
+    </div>`).join('');
+}
+
+function renderKorbKarten(){
+  const el = $('#korb-karten');
+  if (!el) return;
+  el.innerHTML = Object.keys(KOERBE).map(korbKennzahlen).map(z => `
+    <div class="compare-card ${z.K.cls}">
+      <span class="cc-farbe"></span>
+      <h4>${esc(z.K.titel)}</h4>
+      <div class="cc-unter">${esc(z.K.unter)}</div>
+      <div class="cc-num">${z.n}</div>
+      <div class="cc-lbl">Kandidaten im Register</div>
+      <div class="cc-kv"><span>Ø Score</span><b>${nf(z.schnitt, 1)}</b></div>
+      <div class="cc-kv"><span>Kaufkandidaten</span><b>${z.kauf}</b></div>
+      <div class="cc-kv"><span>Bester</span><b>${z.bester ? esc(z.bester.candidate.symbol) : '–'}</b></div>
+    </div>`).join('');
 }
 
 /* Warum ein Titel im jeweiligen Korb ausgeschieden ist. Früher eine eigene
@@ -565,6 +612,24 @@ function renderHistorie(){
       Währungseffekt nicht doppelt zählt. Unter ${need} Kalenderwochen ist die Kennzahl
       ausdrücklich Rauschen, keine Aussage.</p>
     </div>`;
+
+  const vergleichEl = $('#hist-vergleich');
+  if (vergleichEl){
+    const rows = [
+      {lbl:'Portfolio, Median in Euro', v:medEur},
+      {lbl:`Überrendite gegen ${esc(ts.benchmark_symbol || 'IWO')}`, v:ts.median_excess_pct}
+    ];
+    const max = Math.max(10, ...rows.map(r => Math.abs(r.v || 0)));
+    vergleichEl.innerHTML = rows.map(r => `
+      <div class="compare-row">
+        <div class="compare-top">
+          <span class="compare-label">${r.lbl}</span>
+          <span class="compare-num ${sign(r.v)}">${pct(r.v)}</span>
+        </div>
+        <div class="compare-track"><span class="compare-fill ${sign(r.v)}"
+          style="width:${r.v == null ? 0 : Math.max(3, Math.min(100, Math.abs(r.v) / max * 100))}%"></span></div>
+      </div>`).join('');
+  }
 
   $('#hist-chips').innerHTML = [['woche', 'Wochen'], ['monat', 'Monate']]
     .map(([k, t]) => `<button class="chip ${histRaster === k ? 'on' : ''}" data-r="${k}">${t}</button>`).join('');
@@ -768,8 +833,27 @@ function renderDurchschau(h){
   if (!rows.length) return '';
   const top2 = rows.slice(0, 2).reduce((s, r) => s + r.gesamt, 0);
   const top2direkt = rows.slice(0, 2).reduce((s, r) => s + r.direkt, 0);
+  const maxGesamt = Math.max(1, ...rows.map(r => r.gesamt));
+  const vergleich = rows.slice(0, 5).map(r => `
+    <div class="compare-row">
+      <div class="compare-top">
+        <span class="compare-label">${esc(r.sym)}</span>
+        <span class="compare-sub">${nf(r.direkt, 1)} % direkt${r.indirekt >= 0.05 ? ' + ' + nf(r.indirekt, 1) + ' % über ETF' : ''}</span>
+        <span class="compare-num">${nf(r.gesamt, 1)} %</span>
+      </div>
+      <div class="compare-track"><span class="compare-fill" style="width:${Math.max(3, r.gesamt / maxGesamt * 100)}%"></span></div>
+    </div>`).join('');
   return `
     <h2 class="sec">Durchschau durch die ETF</h2>
+    <section class="fullbleed perf" style="margin-top:16px;margin-bottom:28px">
+      <div class="perf-inner">
+        <p class="kicker">Im Vergleich</p>
+        <h2 class="big-h" style="font-size:clamp(22px,4.4vw,30px)">Direkt vs. über ETF.</h2>
+        <p class="lede">Die direkte Depotgewichtung zeigt nur die halbe Exposure. Durchgerechnet
+          mit den Fondsanteilen kommen die größten Positionen deutlich höher heraus.</p>
+        <div class="compare">${vergleich}</div>
+      </div>
+    </section>
     <div class="card">
       <table class="durchschau">
         <tr><th>Titel</th><th>direkt</th><th>über ETF</th><th>gesamt</th></tr>
@@ -899,6 +983,26 @@ function depotZeigen(dp){
       <div style="height:8px"></div>${doppelt.map((d, i) => zeile(d, i)).join('')}</div>` : ''}
     ${aktien.length ? `<h2 class="sec">Aktien</h2><div class="card">${liste(aktien)}</div>` : ''}
     ${etfs.length ? `<h2 class="sec">ETF</h2><div class="card">${liste(etfs)}</div>` : ''}
+    ${(aktien.length || etfs.length) ? `
+    <div class="final">
+      <h2 class="sec">Aktien im Vergleich zu ETF</h2>
+      <div class="final-grid two">
+        <div class="compare-card">
+          <span class="cc-farbe"></span>
+          <h4>Einzelaktien</h4>
+          <div class="cc-unter">${aktien.length} Position${aktien.length === 1 ? '' : 'en'}</div>
+          <div class="cc-num">${nf(anteil(aktien), 0)}<small style="font-size:16px">%</small></div>
+          <div class="cc-lbl">Anteil am Depot</div>
+        </div>
+        <div class="compare-card g">
+          <span class="cc-farbe"></span>
+          <h4>ETF</h4>
+          <div class="cc-unter">${etfs.length} Position${etfs.length === 1 ? '' : 'en'}</div>
+          <div class="cc-num">${nf(anteil(etfs), 0)}<small style="font-size:16px">%</small></div>
+          <div class="cc-lbl">Anteil am Depot</div>
+        </div>
+      </div>
+    </div>` : ''}
     ${planPos.length ? `<h2 class="sec">Sparplan</h2><div class="card">
       ${planPos.map(x => `<div class="kv"><span>${esc(x.name || x.symbol)}</span>
         <span>${x.amount != null ? eur(x.amount) : nf(x.weight, 1) + ' %'}</span></div>`).join('')}

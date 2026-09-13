@@ -326,7 +326,10 @@ h2.sec span{color:var(--acc)}
 
 /* ═════ Tableiste ═════ */
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;
-  grid-template-columns:repeat(3,1fr);background:var(--glass);
+  /* Spaltenzahl folgt der Zahl der Reiter, statt fest auf drei zu stehen:
+     mit dem vierten Reiter waere sonst eine zweite Zeile entstanden, die
+     den Seiteninhalt verdeckt. */
+  grid-auto-flow:column;grid-auto-columns:1fr;background:var(--glass);
   backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);
   border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
 .tabbar button{padding:11px 2px 10px;display:flex;flex-direction:column;align-items:center;
@@ -334,7 +337,9 @@ h2.sec span{color:var(--acc)}
 .tabbar button.on{color:var(--acc)}
 .tabbar svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.6}
 .tabbar button.on svg{fill:var(--acc-soft)}
-.tabbar em{font-style:normal;font-size:11px;font-weight:590}
+.tabbar em{font-style:normal;font-size:11px;font-weight:590;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:359px){.tabbar em{font-size:10px}}
 
 /* ═════ Depot ═════ */
 .lock{text-align:center;padding:48px 0 8px}

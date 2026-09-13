@@ -78,6 +78,9 @@
 
   <div class="tiles" id="markt-tiles"></div>
 
+  <h2 class="sec">Vorschlag des Laufs</h2>
+  <div id="empfehlung"></div>
+
   <!-- Scroll-gesteuerte Kurs-Sequenz. Inhalt kommt aus assets/szene.js,
        ohne JS bleibt hier nichts stehen (.szene:empty ist ausgeblendet). -->
   <section id="kurs-szene" aria-label="Wie aus Kursen ein Score wird"></section>
@@ -124,6 +127,40 @@
   <div class="card" id="markt-quellen"></div>
 
   <p class="fuss">Automatisch erzeugte Kennzahlen aus öffentlichen Quellen.<br>
+  Keine Anlageberatung, keine Kauf&shy;empfehlung im rechtlichen Sinn.</p>
+</section>
+
+<!-- ═════════ VIRTUELLES DEPOT ═════════ -->
+<section class="view" id="v-virtuell">
+  <div class="hero" style="padding-top:22px">
+    <p class="kicker">Virtuelles Depot</p>
+    <h1 class="headline" style="font-size:clamp(30px,7vw,52px)">Erst beweisen,<br><b>dann kaufen.</b></h1>
+    <p class="sub">Jede Position 1.000 Euro, kein echtes Geld. Zwei Quellen laufen im selben
+      Depot und werden getrennt ausgewiesen: die Auswahl aus den Daten und die
+      Trump-Komponente. Nach genug Beobachtungen zeigt sich, welche trägt.</p>
+  </div>
+
+  <h2 class="sec">Gesamtstand</h2>
+  <div id="virt-hero"></div>
+
+  <section class="fullbleed perf">
+    <div class="perf-inner">
+      <p class="kicker">Im Vergleich</p>
+      <h2 class="big-h">Daten gegen Trump.</h2>
+      <p class="lede">Beide Körbe werden gegen ihren eigenen Vergleichsindex gerechnet,
+        in Dollar, damit der Wechselkurs das Ergebnis nicht verfälscht.</p>
+      <div class="compare" id="virt-vergleich"></div>
+    </div>
+  </section>
+
+  <h2 class="sec">Positionen</h2>
+  <div class="chips" id="virt-chips"></div>
+  <div id="virt-liste"></div>
+
+  <h2 class="sec">Wie ein Titel hier hineinkommt</h2>
+  <div class="card" id="virt-anleitung"></div>
+
+  <p class="fuss">Virtuelle Buchungen ohne echtes Geld, ohne Gebühren und ohne Spread.<br>
   Keine Anlageberatung, keine Kauf&shy;empfehlung im rechtlichen Sinn.</p>
 </section>
 

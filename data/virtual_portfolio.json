@@ -1,0 +1,101 @@
+{
+  "updated_at": "2026-09-13T16:47:06+00:00",
+  "einsatz_eur": 1000.0,
+  "positionen": [
+    {
+      "id": "2026-09-13-MXL-score",
+      "symbol": "MXL",
+      "name": "MaxLinear, Inc",
+      "quelle": "score",
+      "korb": "klein",
+      "opened": "2026-09-13",
+      "datenstand": "2026-08-29",
+      "notiz": "Bester Titel im Korb Wachstum, Datenstand 2026-08-29",
+      "issue": null,
+      "benchmark_symbol": "IWO",
+      "branche": "Semiconductors",
+      "score_at_entry": 65.6,
+      "status": "offen",
+      "veraltet": true,
+      "fehler": "Kein Kurs abrufbar"
+    },
+    {
+      "id": "2026-09-13-PLTR-score",
+      "symbol": "PLTR",
+      "name": "Palantir Technologies Inc.",
+      "quelle": "score",
+      "korb": "gross",
+      "opened": "2026-09-13",
+      "datenstand": "2026-08-29",
+      "notiz": "Bester Titel im Korb Grosse Werte, Datenstand 2026-08-29",
+      "issue": null,
+      "benchmark_symbol": "^GSPC",
+      "branche": "Software - Infrastructure",
+      "score_at_entry": 71.9,
+      "status": "offen",
+      "veraltet": true,
+      "fehler": "Kein Kurs abrufbar"
+    },
+    {
+      "id": "2026-09-13-GOOGL-score",
+      "symbol": "GOOGL",
+      "name": "ALPHABET INC",
+      "quelle": "score",
+      "korb": "frueh",
+      "opened": "2026-09-13",
+      "datenstand": "2026-08-29",
+      "notiz": "Bester Titel im Korb Fruehphase, Datenstand 2026-08-29",
+      "issue": null,
+      "benchmark_symbol": "IWO",
+      "branche": "Internet Content & Information",
+      "score_at_entry": 64.6,
+      "status": "offen",
+      "veraltet": true,
+      "fehler": "Kein Kurs abrufbar"
+    }
+  ],
+  "summe": {
+    "gesamt": {
+      "anzahl": 0,
+      "offen": 0,
+      "einsatz_eur": 0,
+      "wert_eur": 0,
+      "gewinn_eur": 0,
+      "rendite_pct": null,
+      "median_excess_pct": null,
+      "besser_als_benchmark": 0,
+      "mit_benchmark": 0
+    },
+    "score": {
+      "anzahl": 0,
+      "offen": 0,
+      "einsatz_eur": 0,
+      "wert_eur": 0,
+      "gewinn_eur": 0,
+      "rendite_pct": null,
+      "median_excess_pct": null,
+      "besser_als_benchmark": 0,
+      "mit_benchmark": 0
+    },
+    "trump": {
+      "anzahl": 0,
+      "offen": 0,
+      "einsatz_eur": 0,
+      "wert_eur": 0,
+      "gewinn_eur": 0,
+      "rendite_pct": null,
+      "median_excess_pct": null,
+      "besser_als_benchmark": 0,
+      "mit_benchmark": 0
+    }
+  },
+  "hinweise": [
+    "MXL aufgenommen aus Korb klein, Score 65.6.",
+    "PLTR aufgenommen aus Korb gross, Score 71.9.",
+    "GOOGL aufgenommen aus Korb frueh, Score 64.6."
+  ],
+  "benchmark_namen": {
+    "IWO": "Russell 2000 Growth",
+    "^GSPC": "S&P 500"
+  }
+}

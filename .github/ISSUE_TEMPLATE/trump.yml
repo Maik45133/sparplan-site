@@ -1,0 +1,23 @@
+name: Trump-Titel aufnehmen
+description: Trump hat oeffentlich zu einer Aktie geraten. Ab ins virtuelle Depot.
+title: "TICKER"
+labels: ["trump"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Titel dieses Issues auf den Ticker aendern, zum Beispiel `NVDA`.
+        Alles nach dem ersten Wort wird ignoriert, du kannst also
+        `NVDA Truth-Post vom Morgen` schreiben.
+
+        Der Einstandskurs ist der Schlusskurs des Tages, an dem du dieses
+        Issue anlegst. Der woechentliche Lauf holt ihn nach und schliesst
+        das Issue automatisch.
+  - type: textarea
+    id: notiz
+    attributes:
+      label: Notiz
+      description: Was genau wurde gesagt, wo, wann. Landet als Notiz an der Position.
+      placeholder: Truth-Social-Post vom 13.09., sinngemaess ...
+    validations:
+      required: false

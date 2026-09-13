@@ -16,6 +16,7 @@ const CFG = {
   repo:'Maik45133/sparplan-site',
   data:'data/latest.json',
   depot:'data/depot.enc',
+  virtuell:'data/virtual_portfolio.json',
   fx:'https://api.frankfurter.dev/v1'
 };
 
@@ -314,6 +315,7 @@ const kursJetzt = () => D?.fx_eur_je_usd ?? kursZuletzt();
    Screening getrennt zeigten, plus das frühere Makro als Abschnitt am Fuß. */
 const TABS = [
   ['kandidaten','Kandidaten','<circle cx="10.5" cy="10.5" r="6.3"/><path d="M19.5 19.5 15 15"/><path d="M8 10.5h5M10.5 8v5" opacity=".55"/>'],
+  ['virtuell',  'Virtuell',  '<path d="M9.5 3.2v6.1L4.9 17.9a2 2 0 0 0 1.8 3h10.6a2 2 0 0 0 1.8-3l-4.6-8.6V3.2"/><path d="M8.2 3.2h7.6"/><path d="M7.4 14.8h9.2" opacity=".55"/>'],
   ['verlauf',   'Verlauf',   '<path d="M3.5 19.5h17"/><path d="M6 19.5V13M10.5 19.5V8.5M15 19.5v-4.5M19.5 19.5V5.5"/>'],
   ['depot',     'Depot',     '<rect x="3" y="8.2" width="18" height="12" rx="2.2"/><path d="M8.2 8.2V6a3.8 3.8 0 0 1 7.6 0v2.2"/><path d="M12 13v2.4" opacity=".7"/>']
 ];
@@ -573,6 +575,7 @@ function renderKandidaten(){
   beobachteGruppe($('#markt-tiles'));
   kippbarAlle($('#markt-tiles'), '.tile');
 
+  renderEmpfehlung();
   renderKatalog();
   renderKorbVergleich();
   renderKorbKarten();
@@ -591,6 +594,99 @@ function renderKandidaten(){
        <span><span class="code">scroll.command</span> · <a href="https://github.com/${CFG.repo}" target="_blank" rel="noopener">Repo ↗</a></span></div>`;
 
   renderUmfeld();
+}
+
+/* ───────── Vorschlag des Laufs ─────────
+   Die Kataloge zeigen drei Ranglisten nebeneinander, aber keine Antwort auf
+   die einzige Frage, die beim Hinsehen wirklich ansteht: welcher Titel wäre
+   es, wenn es genau einer sein müsste. Genau diese Auswahlregel steht auch
+   in tools/virtuell.py, das virtuelle Depot nimmt sie auf. Hier wird sie nur
+   sichtbar gemacht, gerechnet wird nichts Neues.
+
+   Ausgeschlossen wird ein Titel nur aus einem Grund: `reliable === false`,
+   also zu große Datenlücken. Ein Score aus halben Daten ist keine Auswahl,
+   sondern eine gut aussehende Zahl. */
+function spitzenJeKorb(){
+  return Object.keys(KOERBE).map(id => {
+    const bester = korbListe(id).find(d => d.scorecard && d.scorecard.reliable !== false);
+    return bester ? {...bester, korb:id} : null;
+  }).filter(Boolean);
+}
+
+/* Klumpencheck, soweit er ohne entsperrtes Depot möglich ist: liegt im
+   virtuellen Depot schon ein offener Titel derselben Branche, ist der
+   nächste aus derselben Ecke dasselbe Risiko ein zweites Mal. Der volle
+   Check durch die ETF hindurch steht im Depot-Reiter, der braucht das
+   Passwort. */
+function klumpen(d){
+  if (!VP) return null;
+  const offen = (VP.positionen || []).filter(p => p.status === 'offen');
+  if (offen.some(p => p.symbol === d.candidate.symbol))
+    return {art:'drin', text:'Liegt bereits im virtuellen Depot.'};
+  const branche = d.industry || d.candidate.sector;
+  if (!branche) return null;
+  const gleiche = offen.filter(p => (p.branche || '') === branche);
+  if (!gleiche.length) return null;
+  return {art:'klumpen', text:`Im virtuellen Depot liegt bereits ${
+    gleiche.map(p => p.symbol).join(', ')} aus derselben Branche (${branche}).`};
+}
+
+function renderEmpfehlung(){
+  const el = $('#empfehlung');
+  if (!el) return;
+  const spitzen = spitzenJeKorb().sort((a, b) => b.scorecard.total - a.scorecard.total);
+  if (!spitzen.length){
+    el.innerHTML = '<div class="card"><p class="muted">Kein Kandidat mit belastbaren Daten.</p></div>';
+    return;
+  }
+  const erste = spitzen[0], rest = spitzen.slice(1);
+  const u = urteil(erste.scorecard);
+  const K = KOERBE[erste.korb];
+  const kl = klumpen(erste);
+  const tage = alterTage(D.generated_at);
+  const tr = kaufTreiber(erste.scorecard);
+
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:flex-end;gap:14px">
+        <div>
+          <div style="font-size:34px;font-weight:750;letter-spacing:-.02em;line-height:1">${esc(erste.candidate.symbol)}</div>
+          <div class="muted" style="font-size:13px;margin-top:6px">${esc(erste.candidate.name)}</div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="mono" style="font-size:26px;font-weight:750;color:var(--acc)">${nf(erste.scorecard.total, 1)}</div>
+          <div class="muted" style="font-size:11.5px">Score</div>
+        </div>
+      </div>
+      <div style="height:12px"></div>
+      <span class="tag ${u.k}">${u.t}</span>
+      <span class="tag">${esc(K.lang)}</span>
+      ${tr.map(t => `<span class="tag">${esc(KURZ[t.name] || t.name)}</span>`).join('')}
+      ${erste.trump_watch ? '<span class="tag trump">Trump-Depot</span>' : ''}
+      <div style="height:12px"></div>
+      <div class="kv"><span>Bester Titel im Korb</span><span>${esc(K.titel)}</span></div>
+      <div class="kv"><span>Kurs im Lauf</span><span>${erste.price == null ? '–' : nf(erste.price, 2) + ' USD'}</span></div>
+      <div class="kv"><span>Datenstand</span><span class="${tage > 9 ? 'gold' : ''}">${datum(D.generated_at)}, vor ${tage} Tagen</span></div>
+      ${kl ? `<p class="${kl.art === 'drin' ? 'muted' : 'gold'}" style="font-size:13px;margin:10px 0 0">${esc(kl.text)}</p>` : ''}
+      <div style="height:12px"></div>
+      <button class="btn" style="width:100%" data-empf="${esc(erste.candidate.symbol)}">Warum dieser Titel</button>
+    </div>
+    <div class="card">
+      <h3>Auch oben, je einer aus den anderen Körben</h3>
+      ${rest.map(d => `<div class="kv"><span>${esc(d.candidate.symbol)} · ${esc(KOERBE[d.korb].titel)}</span>
+        <span>${nf(d.scorecard.total, 1)}</span></div>`).join('') ||
+        '<p class="muted">Kein weiterer Korb mit belastbaren Daten.</p>'}
+      <p class="muted" style="font-size:12.5px;margin:10px 0 0">Alle drei wandern mit dem
+      nächsten Lauf ins virtuelle Depot, jeder mit 1.000 Euro. Erst wenn sich dort über
+      genug Wochen ein Vorsprung gegen den Vergleichsindex zeigt, ist echtes Geld die
+      nächste Frage.</p>
+    </div>`;
+
+  const knopf = el.querySelector('[data-empf]');
+  if (knopf) knopf.onclick = () => {
+    sheet(detail(erste));
+    bindKaufFormular($('#sheet-body'), erste);
+  };
 }
 
 /* Kategorien, App-Store-artig: Überschrift, fünf Plätze, alle anzeigen. */
@@ -891,6 +987,238 @@ function renderHistorie(){
       <div class="woche-koerper">${koerbeHtml}</div>
     </div>`;
   }).reverse().join('');
+}
+
+/* ═══════════ VIRTUELLES DEPOT ═══════════
+   Liest data/virtual_portfolio.json, das ein woechentlicher GitHub-Actions-
+   Lauf schreibt (tools/virtuell.py). Die Seite rechnet hier bewusst nichts
+   nach: Rendite, Ueberrendite und Waehrungseffekt stehen fertig in der
+   Datei, damit dieselbe Zahl nicht an zwei Stellen in zwei Sprachen
+   entsteht und auseinanderlaeuft.
+
+   Zwei Quellen, ein Depot: `score` sind die Titel, die der Datenlauf als
+   Bester seines Korbs ausgeworfen hat, `trump` sind die, zu denen Trump
+   oeffentlich geraten hat. Getrennt ausgewiesen, weil sonst hinterher
+   niemand sagen kann, welcher Teil die Rendite getragen hat. */
+let VP = null, virtFilter = '*';
+
+const VQ = {
+  score: {kurz:'D', lang:'Datenauswahl', cls:''},
+  trump: {kurz:'T', lang:'Trump',        cls:'f'}
+};
+
+function virtPositionen(){
+  const alle = (VP?.positionen || []).slice();
+  const f = virtFilter;
+  const gefiltert = f === '*' ? alle
+    : f === 'zu' ? alle.filter(p => p.status !== 'offen')
+    : alle.filter(p => p.quelle === f);
+  /* Nach Rendite sortiert, Positionen ohne Kurs ans Ende: eine Zeile ohne
+     Zahl oben waere die auffaelligste Stelle der Liste und sagt nichts. */
+  return gefiltert.sort((a, b) => {
+    const av = a.rendite_pct, bv = b.rendite_pct;
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return bv - av;
+  });
+}
+
+function virtZeile(p, maxAbs){
+  const Q = VQ[p.quelle] || VQ.score;
+  const K = p.korb ? KOERBE[p.korb] : null;
+  const r = p.rendite_pct;
+  /* Der Balken ist relativ zur groessten Auslenkung der gerade gezeigten
+     Liste skaliert, nicht gegen eine erfundene feste Spanne. Ein Balken mit
+     willkuerlichem Massstab sieht nach Information aus und ist keine. */
+  const breite = r == null ? 2 : Math.max(3, Math.min(100, Math.abs(r) / maxAbs * 100));
+  return `<button class="row reveal" data-vid="${esc(p.id)}">
+    <span class="rhead">
+      <span class="korb ${Q.cls}">${Q.kurz}</span>
+      <span class="sym">${esc(p.symbol)}</span>
+      <span class="score mono ${sign(r)}">${r == null ? '–' : pct(r)}</span>
+      <span class="chev">›</span>
+    </span>
+    <span class="nm">${esc(p.name || p.symbol)} · seit ${datum(p.opened)}${
+      p.tage != null ? ' · ' + p.tage + ' Tage' : ''}</span>
+    <span class="bar ${r > 0 ? 'g' : r < 0 ? 'r' : ''}"><i data-w="${breite}"></i></span>
+    <span class="tags">
+      <span class="tag">${Q.lang}</span>
+      ${K ? `<span class="tag">${esc(K.titel)}</span>` : ''}
+      ${p.excess_pct != null ? `<span class="tag ${p.excess_pct > 0 ? 'go' : 'low'}">${
+        pct(p.excess_pct)} gegen ${esc(BENCHMARK_KURZ[p.benchmark_symbol] || p.benchmark_symbol)}</span>` : ''}
+      ${p.status !== 'offen' ? '<span class="tag">geschlossen</span>' : ''}
+      ${p.veraltet ? '<span class="tag warn">kein Kurs</span>' : ''}
+    </span>
+  </button>`;
+}
+
+function virtDetail(p){
+  const Q = VQ[p.quelle] || VQ.score;
+  const K = p.korb ? KOERBE[p.korb] : null;
+  const bn = (VP.benchmark_namen || {})[p.benchmark_symbol] || p.benchmark_symbol;
+  return `
+    <h2 class="sec">${esc(p.symbol)}</h2>
+    <div class="card">
+      <div class="mono ${sign(p.rendite_pct)}" style="font-size:36px;font-weight:750;letter-spacing:-.02em;line-height:1">
+        ${p.rendite_pct == null ? '–' : pct(p.rendite_pct)}</div>
+      <div class="muted" style="font-size:12px;margin-top:6px">Rendite in Euro seit ${datum(p.opened)}</div>
+      <div style="height:14px"></div>
+      <div class="kv"><span>Name</span><span>${esc(p.name || '–')}</span></div>
+      <div class="kv"><span>Quelle</span><span>${Q.lang}${K ? ' · ' + esc(K.titel) : ''}</span></div>
+      ${p.score_at_entry != null ? `<div class="kv"><span>Score beim Einstand</span><span>${nf(p.score_at_entry, 1)}</span></div>` : ''}
+      <div class="kv"><span>Status</span><span>${p.status === 'offen' ? 'offen' : 'geschlossen ' + datum(p.closed)}</span></div>
+    </div>
+    <h2 class="sec">Rechnung</h2>
+    <div class="card">
+      <div class="kv"><span>Einsatz</span><span>${eur(p.einsatz_eur)}</span></div>
+      <div class="kv"><span>Einstand</span><span>${p.entry_price_usd == null ? '–' : nf(p.entry_price_usd, 2) + ' USD'}</span></div>
+      <div class="kv"><span>Stückzahl</span><span>${p.stueck == null ? '–' : nf(p.stueck, 4)}</span></div>
+      <div class="kv"><span>Kurs jetzt</span><span>${p.price_now_usd == null ? '–' : nf(p.price_now_usd, 2) + ' USD'}${
+        p.kurs_stand ? ' <span class="muted">(' + datum(p.kurs_stand) + ')</span>' : ''}</span></div>
+      <div class="kv"><span>Wert</span><span>${eur(p.wert_eur)}</span></div>
+      <div class="kv"><span>Gewinn</span><span class="${sign(p.gewinn_eur)}">${eur(p.gewinn_eur)}</span></div>
+    </div>
+    <h2 class="sec">Gegen den Vergleichsindex</h2>
+    <div class="card">
+      <div class="kv"><span>Kurs allein, in Dollar</span><span class="${sign(p.kurs_pct)}">${pct(p.kurs_pct)}</span></div>
+      <div class="kv"><span>${esc(bn)}</span><span class="${sign(p.benchmark_pct)}">${pct(p.benchmark_pct)}</span></div>
+      <div class="kv"><span>Überrendite</span><span class="${sign(p.excess_pct)}">${pct(p.excess_pct)}</span></div>
+      <div class="kv"><span>davon Währungseffekt</span><span class="${sign(p.waehrungseffekt_pct)}">${pct(p.waehrungseffekt_pct, 2)}</span></div>
+      <p class="muted" style="font-size:12.5px;margin:8px 0 0">Die Überrendite wird in Dollar
+      gerechnet, weil der Vergleichsindex in Dollar notiert. Der Währungseffekt steht getrennt,
+      sonst würde eine Dollarschwäche wie eine schlechte Auswahl aussehen.</p>
+    </div>
+    ${p.notiz || p.issue || p.datenstand ? `<h2 class="sec">Herkunft</h2>
+    <div class="card">
+      ${p.datenstand ? `<div class="kv"><span>Datenstand des Laufs</span><span>${datum(p.datenstand)}</span></div>` : ''}
+      ${p.notiz ? `<p style="margin:8px 0 0">${esc(p.notiz)}</p>` : ''}
+      ${p.issue ? `<p style="margin:10px 0 0"><a href="${esc(p.issue)}" target="_blank" rel="noopener">Ursprungs-Issue ↗</a></p>` : ''}
+    </div>` : ''}
+    ${p.fehler ? `<div class="card"><p class="gold">${esc(p.fehler)}. Die gezeigten Werte
+      stammen aus dem letzten erfolgreichen Lauf.</p></div>` : ''}
+    <div style="height:10px"></div>
+    <button class="btn ghost" style="width:100%" data-close>Schließen</button>`;
+}
+
+function virtBlock(titel, b, roh){
+  /* `roh` ist die Zahl der eingetragenen Positionen, `b.anzahl` die der
+     bereits bewerteten. Die beiden auseinanderzuhalten ist der Unterschied
+     zwischen "da ist noch nichts" und "der Kursabruf steht noch aus". */
+  if (!b || !b.anzahl) return `<div class="tile"><div class="n">–</div>
+    <div class="k">${titel}, ${roh ? roh + ' Position' + (roh === 1 ? '' : 'en')
+      + '<br>Kurse folgen mit dem nächsten Lauf' : 'noch keine Position'}</div></div>`;
+  return `<div class="tile reveal">
+    <div class="n ${sign(b.rendite_pct)}">${b.rendite_pct == null ? '–'
+      : `<span data-count="${b.rendite_pct}" data-decimals="1" data-fmt="pct">0</span>`}</div>
+    <div class="k">${titel} · ${b.anzahl} Position${b.anzahl === 1 ? '' : 'en'}<br>
+      Überrendite ${pct(b.median_excess_pct)}</div></div>`;
+}
+
+function renderVirtuell(){
+  const hero = $('#virt-hero');
+  if (!VP){
+    hero.innerHTML = `<div class="card"><h3 class="gold">Noch nicht geladen</h3>
+      <p class="muted">data/virtual_portfolio.json ist nicht erreichbar. Der erste
+      Lauf legt die Datei an.</p></div>`;
+    return;
+  }
+  const S = VP.summe || {}, g = S.gesamt || {};
+  const alle = VP.positionen || [];
+  const wartend = alle.filter(p => p.wert_eur == null).length;
+
+  hero.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:flex-end;gap:16px">
+        <div>
+          <div class="mono ${sign(g.rendite_pct)}" style="font-size:40px;font-weight:750;letter-spacing:-.02em;line-height:1">
+            ${g.rendite_pct == null ? '–' : pct(g.rendite_pct)}</div>
+          <div class="muted" style="font-size:12px;margin-top:6px">Gesamtrendite in Euro</div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="mono ${sign(g.median_excess_pct)}" style="font-size:21px;font-weight:650">${pct(g.median_excess_pct)}</div>
+          <div class="muted" style="font-size:11.5px">Überrendite, Median</div>
+        </div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="kv"><span>Positionen</span><span>${alle.length} · davon ${
+        alle.filter(p => p.status === 'offen').length} offen</span></div>
+      <div class="kv"><span>Eingesetzt</span><span>${eur(g.einsatz_eur)}</span></div>
+      <div class="kv"><span>Wert heute</span><span>${eur(g.wert_eur)}</span></div>
+      <div class="kv"><span>Gewinn</span><span class="${sign(g.gewinn_eur)}">${eur(g.gewinn_eur)}</span></div>
+      <div class="kv"><span>Schlägt den Index</span><span>${g.besser_als_benchmark || 0} von ${g.mit_benchmark || 0}</span></div>
+      <div class="kv"><span>Positionsgröße</span><span>${eur(VP.einsatz_eur, 0)} je Titel, gleichgewichtet</span></div>
+      <div class="kv"><span>Letzter Lauf</span><span>${datum(VP.updated_at)}${
+        wartend ? ` <span class="gold">· ${wartend} ohne Kurs</span>` : ''}</span></div>
+    </div>
+    <div class="tiles">
+      ${virtBlock('Datenauswahl', S.score, alle.filter(p => p.quelle === 'score').length)}
+      ${virtBlock('Trump', S.trump, alle.filter(p => p.quelle === 'trump').length)}
+    </div>
+    <div class="card">
+      <h3>Was hier gemessen wird</h3>
+      <p>Jede Aufnahme bekommt denselben Einsatz von ${eur(VP.einsatz_eur, 0)}, damit die
+      Gesamtrendite der ehrliche Durchschnitt der Auswahl ist und nicht das Ergebnis
+      zufälliger Stückzahlen. Einstand ist der Schlusskurs des Tages, an dem ein Titel
+      aufgenommen wurde, nie ein späterer. Gebühren, Spread und Steuern sind nicht
+      abgebildet, die Zahlen sind deshalb etwas freundlicher als ein echtes Depot.
+      ${alle.length < 10 ? '<b>Bei so wenigen Positionen ist jede Kennzahl hier Rauschen, keine Aussage.</b>' : ''}</p>
+    </div>`;
+  beobachteGruppe($('#virt-hero .tiles'));
+
+  const vergleichEl = $('#virt-vergleich');
+  const rows = [
+    {lbl:'Datenauswahl, Rendite in Euro',  v:(S.score || {}).rendite_pct},
+    {lbl:'Datenauswahl, Überrendite',      v:(S.score || {}).median_excess_pct},
+    {lbl:'Trump, Rendite in Euro',         v:(S.trump || {}).rendite_pct},
+    {lbl:'Trump, Überrendite',             v:(S.trump || {}).median_excess_pct}
+  ];
+  const max = Math.max(10, ...rows.map(r => Math.abs(r.v || 0)));
+  vergleichEl.innerHTML = rows.map(r => `
+    <div class="compare-row reveal" data-w="${r.v == null ? 0 : Math.max(3, Math.min(100, Math.abs(r.v) / max * 100))}">
+      <div class="compare-top">
+        <span class="compare-label">${r.lbl}</span>
+        <span class="compare-num ${sign(r.v)}"${r.v == null ? '' : ` data-count="${r.v}" data-decimals="1" data-fmt="pct"`}>${r.v == null ? pct(r.v) : pct(0)}</span>
+      </div>
+      <div class="compare-track"><span class="compare-fill ${sign(r.v)}"></span></div>
+    </div>`).join('');
+  beobachteAlle(vergleichEl, '.compare-row');
+
+  const zahl = q => (VP.positionen || []).filter(p => q === '*' ? true
+    : q === 'zu' ? p.status !== 'offen' : p.quelle === q).length;
+  $('#virt-chips').innerHTML = [['*', 'Alle'], ['score', 'Datenauswahl'],
+      ['trump', 'Trump'], ['zu', 'Geschlossen']]
+    .map(([k, t]) => `<button class="chip ${virtFilter === k ? 'on' : ''}" data-v="${k}">${t} ${zahl(k)}</button>`).join('');
+  $$('#virt-chips .chip').forEach(b => b.onclick = () => { virtFilter = b.dataset.v; renderVirtuell(); });
+
+  const liste = virtPositionen();
+  const maxAbs = Math.max(1, ...liste.map(p => Math.abs(p.rendite_pct || 0)));
+  $('#virt-liste').innerHTML = liste.length
+    ? `<div class="card">${liste.map(p => virtZeile(p, maxAbs)).join('')}</div>`
+    : `<div class="card"><p class="muted">Keine Position in dieser Auswahl.</p></div>`;
+  $$('#virt-liste .row').forEach(b => b.onclick = () => {
+    const p = (VP.positionen || []).find(x => x.id === b.dataset.vid);
+    if (p) sheet(virtDetail(p));
+  });
+  beobachteAlle($('#virt-liste'), '.row');
+
+  const neu = t => `https://github.com/${CFG.repo}/issues/new?template=${t}`;
+  $('#virt-anleitung').innerHTML = `
+    <p>Der Lauf sammelt jeden Sonntagabend selbst ein, was in der Zwischenzeit
+    aufgemacht wurde. Es gibt keinen automatischen Feed für öffentliche Äußerungen,
+    das Anlegen ist deshalb ein Handgriff, die Bewertung danach läuft von allein.</p>
+    <div style="height:10px"></div>
+    <div class="kv"><span>Trump hat zu einem Titel geraten</span>
+      <span><a href="${neu('trump.yml')}" target="_blank" rel="noopener">Issue anlegen ↗</a></span></div>
+    <div class="kv"><span>Eigener Titel, ohne Screening</span>
+      <span><a href="${neu('kauf.yml')}" target="_blank" rel="noopener">Issue anlegen ↗</a></span></div>
+    <div class="kv"><span>Position schließen</span>
+      <span><a href="${neu('verkauf.yml')}" target="_blank" rel="noopener">Issue anlegen ↗</a></span></div>
+    <div class="kv"><span>Sofort neu rechnen</span>
+      <span><a href="https://github.com/${CFG.repo}/actions/workflows/virtuelles-depot.yml" target="_blank" rel="noopener">Lauf starten ↗</a></span></div>
+    <p class="muted" style="font-size:12.5px;margin:10px 0 0">Ticker in den Titel des Issues,
+    alles danach wird ignoriert. Einstand ist der Schlusskurs des Tages, an dem das Issue
+    entsteht, nicht der des Laufs. Aus der GitHub-App am Handy sind das rund zehn Sekunden.</p>`;
 }
 
 /* ═══════════ DEPOT ═══════════ */
@@ -1236,7 +1564,12 @@ async function start(){
     const d = iso(e.date); return !m || d < m ? d : m; }, null);
   if (fruehestes) await ladeFX(fruehestes);
 
-  renderKandidaten(); renderHistorie(); depotLock();
+  try {
+    const rv = await fetch(CFG.virtuell, {cache:'no-store'});
+    if (rv.ok) VP = await rv.json();
+  } catch (e) { VP = null; }
+
+  renderKandidaten(); renderHistorie(); renderVirtuell(); depotLock();
   puls();
   beobachteGruppe($('#highlights'));
   beobachteGruppe($('.security-grid'));

@@ -1,0 +1,16 @@
+name: Position schliessen
+description: Eine offene Position im virtuellen Depot beenden.
+title: "TICKER"
+labels: ["verkauf"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Titel auf den Ticker aendern. Die Position bleibt mit ihrem
+        Ergebnis im Register stehen, zaehlt aber nicht mehr als offen.
+  - type: textarea
+    id: grund
+    attributes:
+      label: Grund
+    validations:
+      required: false

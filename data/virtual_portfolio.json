@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-17T08:36:48+00:00",
+  "updated_at": "2026-09-17T12:51:14+00:00",
   "einsatz_eur": 1000.0,
   "positionen": [
     {
@@ -16,34 +16,57 @@
       "branche": "Semiconductors",
       "score_at_entry": 65.6,
       "status": "offen",
-      "veraltet": true,
-      "fehler": "Kein aktueller Kurs"
+      "veraltet": false,
+      "fehler": null,
+      "entry_price_usd": 69.51,
+      "fx_at_entry": 0.86678,
+      "fx_now": 0.86678,
+      "einsatz_eur": 1000.0,
+      "kosten_pct_je_seite": 1.25,
+      "stueck": 16.390074,
+      "price_now_usd": 69.51,
+      "kurs_stand": "2026-09-16",
+      "brutto_wert_eur": 987.5,
+      "wert_eur": 975.16,
+      "kosten_eur": 24.84,
+      "gewinn_eur": -24.84,
+      "rendite_pct": -2.48,
+      "kurs_pct": 0.0,
+      "brutto_rendite_pct": -1.25,
+      "waehrungseffekt_pct": -1.25,
+      "kostenlast_pct": -1.23,
+      "benchmark_at_entry": 361.11,
+      "benchmark_now": 361.11,
+      "benchmark_pct": 0.0,
+      "excess_pct": 0.0,
+      "excess_netto_pct": -2.48,
+      "tage": 0
     }
   ],
   "summe": {
     "gesamt": {
-      "anzahl": 0,
-      "offen": 0,
-      "einsatz_eur": 0,
-      "wert_eur": 0,
-      "gewinn_eur": 0,
-      "rendite_pct": null,
-      "median_excess_pct": null,
+      "anzahl": 1,
+      "offen": 1,
+      "einsatz_eur": 1000.0,
+      "wert_eur": 975.16,
+      "gewinn_eur": -24.84,
+      "rendite_pct": -2.48,
+      "median_excess_pct": -2.48,
       "besser_als_benchmark": 0,
-      "mit_benchmark": 0,
-      "kosten_eur": 0
+      "mit_benchmark": 1,
+      "kosten_eur": 24.84
     },
     "score": {
-      "anzahl": 0,
-      "offen": 0,
-      "einsatz_eur": 0,
-      "wert_eur": 0,
-      "gewinn_eur": 0,
-      "rendite_pct": null,
-      "median_excess_pct": null,
+      "anzahl": 1,
+      "offen": 1,
+      "einsatz_eur": 1000.0,
+      "wert_eur": 975.16,
+      "gewinn_eur": -24.84,
+      "rendite_pct": -2.48,
+      "median_excess_pct": -2.48,
       "besser_als_benchmark": 0,
-      "mit_benchmark": 0,
-      "kosten_eur": 0
+      "mit_benchmark": 1,
+      "kosten_eur": 24.84
     },
     "trump": {
       "anzahl": 0,
@@ -59,7 +82,6 @@
     }
   },
   "hinweise": [
-    "MXL aufgenommen aus Korb klein, Score 65.6.",
     "PLTR uebersprungen, 447.7 Mrd ueber der Kaufgrenze (20 Mrd), Korb gross.",
     "GOOGL uebersprungen, 4238.8 Mrd ueber der Kaufgrenze (20 Mrd), Korb frueh."
   ],

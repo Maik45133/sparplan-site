@@ -1,0 +1,38 @@
+# Rueckrechnung der kursbasierten Merkmale. Nur auf Knopfdruck.
+#
+# Bewusst kein Zeitplan: Das Ergebnis aendert sich von Woche zu Woche kaum,
+# ein woechentlicher Lauf waere reine Verschwendung. Sinnvoll ist er nach
+# einer Aenderung an der Momentum-Definition oder wenn deutlich mehr Titel im
+# Score-Register stehen.
+name: Backtest
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Abhaengigkeiten
+        run: pip install --quiet yfinance || true
+      - name: Rueckrechnung
+        run: python tools/backtest.py
+      - name: Zurueckschreiben
+        run: |
+          if git diff --quiet -- data/backtest.json; then
+            echo "Keine Aenderung."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/backtest.json
+          git commit -m "Backtest der kursbasierten Merkmale"
+          git push

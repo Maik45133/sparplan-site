@@ -17,6 +17,8 @@ const CFG = {
   data:'data/latest.json',
   depot:'data/depot.enc',
   virtuell:'data/virtual_portfolio.json',
+  register:'data/score_register.json',
+  backtest:'data/backtest.json',
   fx:'https://api.frankfurter.dev/v1'
 };
 
@@ -225,12 +227,14 @@ function fortschrittsfaden(){
 const KOMPONENTE = {
   revision_momentum:'Analystenrevisionen', growth_acceleration:'Wachstumsbeschleunigung',
   margin_trend:'Margentrend', fcf_trend:'Cashflow-Trend',
-  insider_cluster:'Insiderkäufe', dilution:'Verwässerung'
+  insider_cluster:'Insiderkäufe', dilution:'Verwässerung',
+  momentum_12_1:'Kursmomentum über 12 Monate', earnings_drift:'Reaktion auf die letzten Zahlen'
 };
 const KURZ = {
   revision_momentum:'Revisionen', growth_acceleration:'Beschleunigung',
   margin_trend:'Margen', fcf_trend:'Cashflow',
-  insider_cluster:'Insider', dilution:'kaum Verwässerung'
+  insider_cluster:'Insider', dilution:'kaum Verwässerung',
+  momentum_12_1:'Momentum', earnings_drift:'Earnings-Drift'
 };
 const GRUND = {
   mining_explorer:'Explorer ohne Produktion', no_revenue:'kein Umsatz', too_small:'zu klein',
@@ -606,10 +610,25 @@ function renderKandidaten(){
    Ausgeschlossen wird ein Titel nur aus einem Grund: `reliable === false`,
    also zu große Datenlücken. Ein Score aus halben Daten ist keine Auswahl,
    sondern eine gut aussehende Zahl. */
+/* Dieselbe Obergrenze wie MAX_MARKTKAPITAL_KAUF in tools/virtuell.py.
+   Bei Standardwerten ab zwanzig Milliarden hat ein wöchentliches Skript keine
+   Aussicht auf einen Vorsprung: Das sind die meistanalysierten Aktien der
+   Welt. Dazu kommt, dass das echte Depot durch die ETF hindurch bereits zu
+   rund 45 Prozent aus zwei Titeln dieses Segments besteht. Die großen Werte
+   bleiben im Katalog sichtbar, sie werden nur nicht mehr vorgeschlagen. */
+const MAX_KAP_KAUF = 20e9;
+
 function spitzenJeKorb(){
   return Object.keys(KOERBE).map(id => {
+    /* Kein Nachrücken: Ist der Beste eines Korbs zu groß, bleibt der Platz
+       leer. Der Zweitbeste ist nicht die Auswahl, die das Verfahren
+       getroffen hat, und ihn stattdessen zu nehmen wäre eine zweite,
+       unbegründete Entscheidungsregel. */
     const bester = korbListe(id).find(d => d.scorecard && d.scorecard.reliable !== false);
-    return bester ? {...bester, korb:id} : null;
+    if (!bester) return null;
+    if (bester.candidate.market_cap != null && bester.candidate.market_cap > MAX_KAP_KAUF)
+      return {...bester, korb:id, zuGross:true};
+    return {...bester, korb:id};
   }).filter(Boolean);
 }
 
@@ -635,11 +654,16 @@ function renderEmpfehlung(){
   const el = $('#empfehlung');
   if (!el) return;
   const spitzen = spitzenJeKorb().sort((a, b) => b.scorecard.total - a.scorecard.total);
-  if (!spitzen.length){
-    el.innerHTML = '<div class="card"><p class="muted">Kein Kandidat mit belastbaren Daten.</p></div>';
+  const kaufbar = spitzen.filter(d => !d.zuGross);
+  if (!kaufbar.length){
+    el.innerHTML = `<div class="card"><h3 class="gold">Diesmal kein Vorschlag</h3>
+      <p>Die besten Titel aller Körbe liegen über der Größengrenze von
+      ${mrd(MAX_KAP_KAUF)} und werden deshalb nicht vorgeschlagen.
+      ${spitzen.length ? 'Betroffen: ' + spitzen.map(d => esc(d.candidate.symbol)).join(', ') + '.' : ''}
+      Nichts zu tun ist ein normales Ergebnis, kein Leerlauf.</p></div>`;
     return;
   }
-  const erste = spitzen[0], rest = spitzen.slice(1);
+  const erste = kaufbar[0], rest = spitzen.filter(d => d !== erste);
   const u = urteil(erste.scorecard);
   const K = KOERBE[erste.korb];
   const kl = klumpen(erste);
@@ -674,12 +698,12 @@ function renderEmpfehlung(){
     <div class="card">
       <h3>Auch oben, je einer aus den anderen Körben</h3>
       ${rest.map(d => `<div class="kv"><span>${esc(d.candidate.symbol)} · ${esc(KOERBE[d.korb].titel)}</span>
-        <span>${nf(d.scorecard.total, 1)}</span></div>`).join('') ||
+        <span>${d.zuGross ? `<span class="muted">${mrd(d.candidate.market_cap)}, zu groß</span> · ` : ''}${nf(d.scorecard.total, 1)}</span></div>`).join('') ||
         '<p class="muted">Kein weiterer Korb mit belastbaren Daten.</p>'}
-      <p class="muted" style="font-size:12.5px;margin:10px 0 0">Alle drei wandern mit dem
-      nächsten Lauf ins virtuelle Depot, jeder mit 1.000 Euro. Erst wenn sich dort über
-      genug Wochen ein Vorsprung gegen den Vergleichsindex zeigt, ist echtes Geld die
-      nächste Frage.</p>
+      <p class="muted" style="font-size:12.5px;margin:10px 0 0">Ins virtuelle Depot wandern
+      nur Titel unter ${mrd(MAX_KAP_KAUF)}, jeder mit 1.000 Euro abzüglich Kosten. Ob sich
+      echtes Geld lohnt, entscheidet nicht dieses Depot, sondern die Messung über alle
+      Kandidaten im Reiter Verlauf: Sie braucht Wochen statt Jahre.</p>
     </div>`;
 
   const knopf = el.querySelector('[data-empf]');
@@ -989,6 +1013,234 @@ function renderHistorie(){
   }).reverse().join('');
 }
 
+/* ═══════════ KANTE: hat der Score Vorhersagekraft ═══════════
+   Liest data/score_register.json, das tools/register.py schreibt.
+
+   Warum das die wichtigste Ansicht der ganzen Seite ist: Ein Depot aus wenigen
+   Positionen braucht Jahre, bis sich Können von Zufall trennen lässt. Jeder
+   Datenlauf bewertet dagegen rund siebzig Kandidaten. Die Frage "korreliert
+   der Score mit der späteren Rendite" lässt sich über alle siebzig
+   gleichzeitig beantworten, und damit rund zwanzigmal schneller.
+
+   Gerechnet wird nichts davon hier. Die Seite zeigt nur, was in der Datei
+   steht, damit dieselbe Zahl nicht an zwei Stellen in zwei Sprachen entsteht
+   und auseinanderläuft. */
+let REG = null, icHorizont = '30';
+
+/* Korrelationen mit Vorzeichen, aber ohne das irreführende "-0,000":
+   Ein Wert, der auf drei Stellen gerundet null ist, soll auch null aussehen. */
+function ic(v, stellen = 3){
+  if (v == null) return '–';
+  const w = Math.abs(v) < 0.5 / Math.pow(10, stellen) ? 0 : v;
+  return (w > 0 ? '+' : '') + nf(w, stellen);
+}
+
+/* Einordnung des Information Coefficient. Die Grenzen sind die in der
+   quantitativen Praxis üblichen Daumenwerte, keine gemessenen Schwellen.
+   Wichtig ist vor allem, dass 0,04 hier nicht wie "praktisch null" aussieht:
+   ein IC von 0,03 bis 0,05, der über viele Wochen hält, ist ein real
+   nutzbarer Vorsprung. Umgekehrt ist ein IC von 0,3 aus fünf Wochen kein
+   Fund, sondern fast immer Zufall. */
+function icUrteil(ic, t, belastbar){
+  if (ic == null) return {t:'noch keine Auswertung', k:'warn',
+    text:'Es liegt noch kein Lauf vor, dessen Stichtag erreicht ist.'};
+  if (!belastbar) return {t:'noch Rauschen', k:'warn',
+    text:'Zu wenige unabhängige Wochen. Die Zahl steht hier, damit man sie wachsen sieht, nicht damit man ihr glaubt.'};
+  if (t != null && Math.abs(t) < 2) return {t:'kein Zusammenhang messbar', k:'low',
+    text:'Der mittlere Zusammenhang ist mit null vereinbar. Das ist ein Ergebnis, kein Fehler.'};
+  if (ic >= 0.08) return {t:'deutlicher Zusammenhang', k:'go',
+    text:'Für ein Einzelmerkmal ein starker Wert. Vor einer Umstellung auf echtes Geld an einer zweiten Stichprobe prüfen.'};
+  if (ic >= 0.03) return {t:'schwacher, aber nutzbarer Zusammenhang', k:'go',
+    text:'In der quantitativen Praxis der Bereich, in dem ein Verfahren tatsächlich Geld verdient, sofern die Kosten darunter bleiben.'};
+  if (ic > 0) return {t:'Zusammenhang zu klein', k:'low',
+    text:'Positiv, aber kleiner als die Handelskosten. Damit ist er nicht nutzbar.'};
+  return {t:'Zusammenhang negativ', k:'warn',
+    text:'Der Score ordnet in die falsche Richtung. Wenn das hält, ist das die wertvollste Information dieser Seite.'};
+}
+
+function kanteChips(){
+  const el = $('#kante-chips');
+  if (!el) return;
+  el.innerHTML = (REG?.horizonte || [30, 60, 90]).map(h =>
+    `<button class="chip ${icHorizont === String(h) ? 'on' : ''}" data-h="${h}">${h} Tage</button>`).join('');
+  $$('#kante-chips .chip').forEach(b => b.onclick = () => { icHorizont = b.dataset.h; renderKante(); });
+}
+
+function renderKante(){
+  const el = $('#kante'), kEl = $('#kante-komponenten');
+  if (!el) return;
+  if (!REG){
+    el.innerHTML = `<div class="card"><p class="muted">data/score_register.json
+      ist nicht erreichbar. Der erste Wochenlauf legt die Datei an.</p></div>`;
+    if (kEl) kEl.innerHTML = '';
+    return;
+  }
+  kanteChips();
+
+  const z = (REG.zusammenfassung || {})[icHorizont] || {};
+  const laeufe = REG.laeufe || [];
+  const kandidaten = laeufe.reduce((a, l) => a + (l.kandidaten || []).length, 0);
+  const noetig = REG.min_wochen || 12;
+  const u = icUrteil(z.ic_mittel, z.t, z.belastbar);
+  const fehlend = laeufe.reduce((a, l) => {
+    const x = (l.auswertung || {})[icHorizont];
+    return a + (x && x.fehlend ? x.fehlend : 0); }, 0);
+
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:flex-end;gap:16px">
+        <div>
+          <div class="mono ${sign(z.ic_mittel)}" style="font-size:40px;font-weight:750;letter-spacing:-.02em;line-height:1">
+            ${ic(z.ic_mittel)}</div>
+          <div class="muted" style="font-size:12px;margin-top:6px">Rangkorrelation Score zu Rendite</div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="mono" style="font-size:21px;font-weight:650">${z.t == null ? '–' : nf(z.t, 2)}</div>
+          <div class="muted" style="font-size:11.5px">t-Wert</div>
+        </div>
+      </div>
+      <div style="height:12px"></div>
+      <span class="tag ${u.k}">${u.t}</span>
+      <p class="muted" style="font-size:13px;margin:10px 0 0">${u.text}</p>
+      <div style="height:12px"></div>
+      <div class="kv"><span>Unabhängige Wochen</span>
+        <span class="${z.belastbar ? '' : 'gold'}">${z.wochen || 0} von ${noetig}</span></div>
+      <div class="kv"><span>Ausgewertete Läufe</span><span>${z.laeufe || 0} von ${laeufe.length}</span></div>
+      <div class="kv"><span>Beobachtete Kandidaten</span><span>${kandidaten}</span></div>
+      <div class="kv"><span>Wochen mit positivem Wert</span><span>${z.positive_wochen || 0} von ${z.wochen || 0}</span></div>
+      <div class="kv"><span>Bestes gegen schlechtestes Drittel</span>
+        <span class="${sign(z.terzil_abstand_mittel)}">${pct(z.terzil_abstand_mittel)}</span></div>
+      <div class="kv"><span>Ohne Kurs am Stichtag</span>
+        <span class="${fehlend > kandidaten * 0.1 ? 'gold' : ''}">${fehlend}</span></div>
+      <div class="bar" style="margin-top:12px"><i data-w="${Math.min(100, (z.wochen || 0) / noetig * 100)}"></i></div>
+    </div>
+    <div class="card">
+      <h3>Was hier gerechnet wird</h3>
+      <p>Bei jedem Datenlauf wird <b>jeder</b> bewertete Kandidat mit seinem Score und
+      seinem Kurs eingefroren, nicht nur die Spitze. ${icHorizont} Kalendertage später
+      wird jede Rendite um die des passenden Vergleichsindex bereinigt und geprüft, ob
+      die Rangfolge nach Score zur Rangfolge nach Rendite passt. Plus eins hieße perfekt,
+      null hieße kein Zusammenhang.</p>
+      <p>Gezählt werden <b>Kalenderwochen, nicht Läufe</b>. Drei Läufe an drei
+      aufeinanderfolgenden Tagen messen fast dieselbe Kohorte im fast selben Markt und
+      werden zu einer Beobachtung gemittelt. Titel ohne Kurs am Stichtag sind meist
+      delistet, also überwiegend schlechte Fälle; sie fallen aus der Rechnung und werden
+      deshalb oben ausdrücklich mitgezählt.</p>
+    </div>`;
+  beobachte($('#kante .bar')?.parentElement || $('#kante .card'));
+  aktiviereBalken(el);
+
+  /* Komponententabelle. Das ist die Zahl, die eine Änderung an den Gewichten
+     überhaupt erst begründen kann: Sie sagt je Komponente einzeln, ob sie
+     etwas vorhersagt oder nur Gewicht verbraucht. */
+  if (!kEl) return;
+  const komp = z.komponenten || {};
+  const namen = Object.keys(komp);
+  if (!namen.length){
+    kEl.innerHTML = `<div class="card"><p class="muted">Noch keine Komponente
+      ausgewertet. Der erste Stichtag muss erreicht sein.</p></div>`;
+    return;
+  }
+  const gewichte = (laeufe[laeufe.length - 1] || {}).gewichte || {};
+  const maxIc = Math.max(0.02, ...namen.map(n => Math.abs(komp[n].ic_mittel || 0)));
+  kEl.innerHTML = `<div class="card">
+    ${namen.sort((a, b) => (komp[b].ic_mittel || 0) - (komp[a].ic_mittel || 0)).map(n => {
+      const c = komp[n], w = gewichte[n];
+      return `<div class="row reveal" style="cursor:default">
+        <span class="rhead">
+          <span class="sym">${esc(KURZ[n] || KOMPONENTE[n] || n)}</span>
+          <span class="score mono ${sign(c.ic_mittel)}">${ic(c.ic_mittel)}</span>
+        </span>
+        <span class="nm">${w != null ? w + ' % Gewicht' : 'Gewicht unbekannt'} ·
+          ${c.wochen} Woche${c.wochen === 1 ? '' : 'n'} · t ${c.t == null ? '–' : nf(c.t, 2)}</span>
+        <span class="bar ${c.ic_mittel > 0 ? 'g' : c.ic_mittel < 0 ? 'r' : ''}">
+          <i data-w="${Math.max(2, Math.min(100, Math.abs(c.ic_mittel || 0) / maxIc * 100))}"></i></span>
+      </div>`;
+    }).join('')}
+    <p class="muted" style="font-size:12.5px;margin:12px 0 0">Eine Komponente mit
+    hohem Gewicht und einem Wert nahe null verbraucht Gewicht, ohne etwas beizutragen.
+    Solange die Spalte Wochen unter ${noetig} steht, ist das aber kein Befund, sondern
+    eine Momentaufnahme.</p>
+  </div>`;
+  beobachteAlle(kEl, '.row');
+}
+
+
+/* ───────── Rückrechnung ─────────
+   Zeigt data/backtest.json, das tools/backtest.py auf Knopfdruck erzeugt.
+
+   Wichtig für die Einordnung: Das ist NICHT die Rückrechnung des ganzen
+   Scores. Nur die kursbasierten Merkmale lassen sich ohne weiteres punktgenau
+   rekonstruieren, weil ein Schlusskurs von gestern gestern bekannt war. Der
+   Fundamentalteil bräuchte den Meldestand jedes Stichtags aus EDGAR, und die
+   Analystenrevisionen sind grundsätzlich nicht rekonstruierbar. */
+let BT = null;
+
+function renderBacktest(){
+  const el = $('#backtest');
+  if (!el) return;
+  if (!BT || !BT.merkmale){
+    el.innerHTML = `<div class="card">
+      <p class="muted">Noch nicht gelaufen. Die Rückrechnung startet auf Knopfdruck
+      und braucht ein paar Minuten.</p>
+      <div style="height:8px"></div>
+      <div class="kv"><span>Rückrechnung starten</span>
+        <span><a href="https://github.com/${CFG.repo}/actions/workflows/backtest.yml"
+          target="_blank" rel="noopener">Bei GitHub ↗</a></span></div></div>`;
+    return;
+  }
+  const m = BT.merkmale.momentum_12_1 || {}, u = BT.merkmale.umkehr_1m || {};
+  const u2 = icUrteil(m.ic_mittel, m.t, m.belastbar);
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:flex-end;gap:16px">
+        <div>
+          <div class="mono ${sign(m.ic_mittel)}" style="font-size:36px;font-weight:750;letter-spacing:-.02em;line-height:1">
+            ${ic(m.ic_mittel)}</div>
+          <div class="muted" style="font-size:12px;margin-top:6px">Kursmomentum, mittlerer IC</div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="mono" style="font-size:21px;font-weight:650">${m.t == null ? '–' : nf(m.t, 2)}</div>
+          <div class="muted" style="font-size:11.5px">t-Wert</div>
+        </div>
+      </div>
+      <div style="height:12px"></div>
+      <span class="tag ${u2.k}">${u2.t}</span>
+      <div style="height:12px"></div>
+      <div class="kv"><span>Überlappungsfreie Stichtage</span>
+        <span class="${m.belastbar ? '' : 'gold'}">${m.stichtage || 0} von ${BT.min_stichtage}</span></div>
+      <div class="kv"><span>Stichtage mit positivem Wert</span>
+        <span>${m.positive_stichtage || 0} von ${m.stichtage || 0}</span></div>
+      <div class="kv"><span>Bestes gegen schlechtestes Drittel</span>
+        <span class="${sign(m.terzil_abstand_mittel)}">${pct(m.terzil_abstand_mittel)}</span></div>
+      <div class="kv"><span>Titel im Suchraum</span><span>${BT.titel}</span></div>
+      <div class="kv"><span>Haltedauer je Stichtag</span><span>${BT.haltedauer_tage} Tage</span></div>
+      <div class="kv"><span>Gegenprobe Kurzfrist-Umkehr</span>
+        <span class="${BT.gegenprobe_bestanden ? 'up' : 'gold'}">${
+          ic(u.ic_mittel)}${
+          BT.gegenprobe_bestanden === true ? ' · bestanden'
+          : BT.gegenprobe_bestanden === false ? ' · nicht bestanden' : ''}</span></div>
+      <div class="kv"><span>Stand</span><span>${datum(BT.updated_at)}</span></div>
+    </div>
+    <div class="card">
+      <h3>Was diese Zahl kann und was nicht</h3>
+      <p>Geprüft ist nur der <b>kursbasierte</b> Teil des Scores. Kurse sind die einzigen
+      Daten, die ohne Weiteres punktgenau sind: ein Schlusskurs von gestern war gestern
+      bekannt. Der Fundamentalteil bräuchte für jeden Stichtag den Meldestand aus EDGAR,
+      und die Analystenrevisionen liefert Yahoo grundsätzlich nur im heutigen Stand.
+      Wer heutige Revisionen auf vergangene Kurse legt, misst die Zukunft.</p>
+      <p>Die Stichtage liegen genau eine Haltedauer auseinander, damit dieselbe
+      Kursbewegung nicht mehrfach gezählt wird. Die <b>Gegenprobe</b> prüft, ob die
+      Kurzfrist-Umkehr wie in der Literatur das umgekehrte Vorzeichen hat: kommt sie mit
+      demselben Vorzeichen heraus, misst der Aufbau einen Fehler in der Mechanik und
+      nicht die Merkmale.</p>
+      <p class="muted" style="font-size:12.5px">${esc(BT.vorbehalt || '')} Delistete
+      Firmen hätten fast immer schwaches Momentum und schwache Folgerendite gehabt, sie
+      fehlen also überwiegend dort, wo das Merkmal recht gehabt hätte. Die gemessene
+      Kante ist damit eher eine Untergrenze.</p>
+    </div>`;
+}
+
 /* ═══════════ VIRTUELLES DEPOT ═══════════
    Liest data/virtual_portfolio.json, das ein woechentlicher GitHub-Actions-
    Lauf schreibt (tools/virtuell.py). Die Seite rechnet hier bewusst nichts
@@ -1045,9 +1297,9 @@ function virtZeile(p, maxAbs){
     <span class="tags">
       <span class="tag">${Q.lang}</span>
       ${K ? `<span class="tag">${esc(K.titel)}</span>` : ''}
-      ${p.excess_pct != null ? `<span class="tag ${p.excess_pct > 0 ? 'go' : 'low'}">${
-        pct(p.excess_pct)} gegen ${esc(BENCHMARK_KURZ[p.benchmark_symbol] || p.benchmark_symbol)}</span>` : ''}
-      ${p.status !== 'offen' ? '<span class="tag">geschlossen</span>' : ''}
+      ${p.excess_netto_pct != null ? `<span class="tag ${p.excess_netto_pct > 0 ? 'go' : 'low'}">${
+        pct(p.excess_netto_pct)} gegen ${esc(BENCHMARK_KURZ[p.benchmark_symbol] || p.benchmark_symbol)}</span>` : ''}
+      ${p.status !== 'offen' ? `<span class="tag">${esc(p.schliessgrund || 'geschlossen')}</span>` : ''}
       ${p.veraltet ? '<span class="tag warn">kein Kurs</span>' : ''}
     </span>
   </button>`;
@@ -1067,7 +1319,10 @@ function virtDetail(p){
       <div class="kv"><span>Name</span><span>${esc(p.name || '–')}</span></div>
       <div class="kv"><span>Quelle</span><span>${Q.lang}${K ? ' · ' + esc(K.titel) : ''}</span></div>
       ${p.score_at_entry != null ? `<div class="kv"><span>Score beim Einstand</span><span>${nf(p.score_at_entry, 1)}</span></div>` : ''}
-      <div class="kv"><span>Status</span><span>${p.status === 'offen' ? 'offen' : 'geschlossen ' + datum(p.closed)}</span></div>
+      <div class="kv"><span>Status</span><span>${p.status === 'offen' ? 'offen'
+        : 'geschlossen ' + datum(p.closed) + (p.schliessgrund ? ' · ' + esc(p.schliessgrund) : '')}</span></div>
+      ${p.stop_kurs != null ? `<div class="kv"><span>Stop lag bei</span>
+        <span>${nf(p.stop_kurs, 2)} USD, Höchststand ${nf(p.hoechster_kurs, 2)}</span></div>` : ''}
     </div>
     <h2 class="sec">Rechnung</h2>
     <div class="card">
@@ -1076,14 +1331,19 @@ function virtDetail(p){
       <div class="kv"><span>Stückzahl</span><span>${p.stueck == null ? '–' : nf(p.stueck, 4)}</span></div>
       <div class="kv"><span>Kurs jetzt</span><span>${p.price_now_usd == null ? '–' : nf(p.price_now_usd, 2) + ' USD'}${
         p.kurs_stand ? ' <span class="muted">(' + datum(p.kurs_stand) + ')</span>' : ''}</span></div>
-      <div class="kv"><span>Wert</span><span>${eur(p.wert_eur)}</span></div>
+      <div class="kv"><span>Wert vor Kosten</span><span>${eur(p.brutto_wert_eur)}</span></div>
+      <div class="kv"><span>Gebühren und Spread</span><span class="down">${eur(p.kosten_eur)}</span></div>
+      <div class="kv"><span>Wert nach Kosten</span><span>${eur(p.wert_eur)}</span></div>
       <div class="kv"><span>Gewinn</span><span class="${sign(p.gewinn_eur)}">${eur(p.gewinn_eur)}</span></div>
+      <div class="kv"><span>Rendite vor Kosten</span><span class="${sign(p.brutto_rendite_pct)}">${pct(p.brutto_rendite_pct)}</span></div>
+      <div class="kv"><span>davon Kosten gekostet</span><span class="down">${pct(p.kostenlast_pct, 2)}</span></div>
     </div>
     <h2 class="sec">Gegen den Vergleichsindex</h2>
     <div class="card">
       <div class="kv"><span>Kurs allein, in Dollar</span><span class="${sign(p.kurs_pct)}">${pct(p.kurs_pct)}</span></div>
       <div class="kv"><span>${esc(bn)}</span><span class="${sign(p.benchmark_pct)}">${pct(p.benchmark_pct)}</span></div>
-      <div class="kv"><span>Überrendite</span><span class="${sign(p.excess_pct)}">${pct(p.excess_pct)}</span></div>
+      <div class="kv"><span>Überrendite vor Kosten</span><span class="${sign(p.excess_pct)}">${pct(p.excess_pct)}</span></div>
+      <div class="kv"><span>Überrendite nach Kosten</span><span class="${sign(p.excess_netto_pct)}">${pct(p.excess_netto_pct)}</span></div>
       <div class="kv"><span>davon Währungseffekt</span><span class="${sign(p.waehrungseffekt_pct)}">${pct(p.waehrungseffekt_pct, 2)}</span></div>
       <p class="muted" style="font-size:12.5px;margin:8px 0 0">Die Überrendite wird in Dollar
       gerechnet, weil der Vergleichsindex in Dollar notiert. Der Währungseffekt steht getrennt,
@@ -1125,6 +1385,9 @@ function renderVirtuell(){
   }
   const S = VP.summe || {}, g = S.gesamt || {};
   const alle = VP.positionen || [];
+  const kosten = VP.kosten || {ordergebuehr_eur:0, echte_ordergroesse_eur:0,
+    spread_pct_je_seite:0, pct_hin_und_zurueck:0};
+  const stop = VP.stop || {faktor:2.5};
   const wartend = alle.filter(p => p.wert_eur == null).length;
 
   hero.innerHTML = `
@@ -1148,6 +1411,7 @@ function renderVirtuell(){
       <div class="kv"><span>Gewinn</span><span class="${sign(g.gewinn_eur)}">${eur(g.gewinn_eur)}</span></div>
       <div class="kv"><span>Schlägt den Index</span><span>${g.besser_als_benchmark || 0} von ${g.mit_benchmark || 0}</span></div>
       <div class="kv"><span>Positionsgröße</span><span>${eur(VP.einsatz_eur, 0)} je Titel, gleichgewichtet</span></div>
+      <div class="kv"><span>Kosten bezahlt</span><span class="down">${eur(g.kosten_eur)}</span></div>
       <div class="kv"><span>Letzter Lauf</span><span>${datum(VP.updated_at)}${
         wartend ? ` <span class="gold">· ${wartend} ohne Kurs</span>` : ''}</span></div>
     </div>
@@ -1160,18 +1424,26 @@ function renderVirtuell(){
       <p>Jede Aufnahme bekommt denselben Einsatz von ${eur(VP.einsatz_eur, 0)}, damit die
       Gesamtrendite der ehrliche Durchschnitt der Auswahl ist und nicht das Ergebnis
       zufälliger Stückzahlen. Einstand ist der Schlusskurs des Tages, an dem ein Titel
-      aufgenommen wurde, nie ein späterer. Gebühren, Spread und Steuern sind nicht
-      abgebildet, die Zahlen sind deshalb etwas freundlicher als ein echtes Depot.
-      ${alle.length < 10 ? '<b>Bei so wenigen Positionen ist jede Kennzahl hier Rauschen, keine Aussage.</b>' : ''}</p>
+      aufgenommen wurde, nie ein späterer.</p>
+      <p><b>Gebühren und Spread sind eingerechnet</b>, und zwar auf die Ordergröße, die
+      wirklich gehandelt werden soll: ${eur(kosten.ordergebuehr_eur)} Gebühr auf
+      ${eur(kosten.echte_ordergroesse_eur, 0)} Order plus ${nf(kosten.spread_pct_je_seite, 2)} %
+      Spanne je Seite, zusammen <b>${nf(kosten.pct_hin_und_zurueck, 2)} % hin und zurück</b>.
+      Genau um diesen Betrag muss eine Auswahl den Index schlagen, bevor überhaupt etwas
+      übrig bleibt. Steuern sind weiterhin nicht abgebildet.</p>
+      <p>Positionen schließen sich selbst, wenn der Kurs mehr als das
+      ${nf(stop.faktor, 1)}-fache der mittleren Tagesschwankung unter den höchsten Stand seit
+      Einstand fällt. Ein fester Prozentstop wäre bei diesen Titeln ein Zufallsgenerator.</p>
+      ${alle.length < 10 ? '<p class="gold"><b>Bei so wenigen Positionen ist jede Kennzahl hier Rauschen, keine Aussage. Die belastbare Messung steht im Reiter Verlauf.</b></p>' : ''}
     </div>`;
   beobachteGruppe($('#virt-hero .tiles'));
 
   const vergleichEl = $('#virt-vergleich');
   const rows = [
-    {lbl:'Datenauswahl, Rendite in Euro',  v:(S.score || {}).rendite_pct},
-    {lbl:'Datenauswahl, Überrendite',      v:(S.score || {}).median_excess_pct},
-    {lbl:'Trump, Rendite in Euro',         v:(S.trump || {}).rendite_pct},
-    {lbl:'Trump, Überrendite',             v:(S.trump || {}).median_excess_pct}
+    {lbl:'Datenauswahl, Rendite nach Kosten',    v:(S.score || {}).rendite_pct},
+    {lbl:'Datenauswahl, Überrendite nach Kosten', v:(S.score || {}).median_excess_pct},
+    {lbl:'Trump, Rendite nach Kosten',           v:(S.trump || {}).rendite_pct},
+    {lbl:'Trump, Überrendite nach Kosten',        v:(S.trump || {}).median_excess_pct}
   ];
   const max = Math.max(10, ...rows.map(r => Math.abs(r.v || 0)));
   vergleichEl.innerHTML = rows.map(r => `
@@ -1564,12 +1836,23 @@ async function start(){
     const d = iso(e.date); return !m || d < m ? d : m; }, null);
   if (fruehestes) await ladeFX(fruehestes);
 
+  /* Beide Zusatzdateien einzeln und fehlertolerant: eine fehlende Datei darf
+     die Seite nicht kippen, sie soll nur ihren Abschnitt leer lassen. */
   try {
     const rv = await fetch(CFG.virtuell, {cache:'no-store'});
     if (rv.ok) VP = await rv.json();
   } catch (e) { VP = null; }
+  try {
+    const rr = await fetch(CFG.register, {cache:'no-store'});
+    if (rr.ok) REG = await rr.json();
+  } catch (e) { REG = null; }
+  try {
+    const rb = await fetch(CFG.backtest, {cache:'no-store'});
+    if (rb.ok) BT = await rb.json();
+  } catch (e) { BT = null; }
 
-  renderKandidaten(); renderHistorie(); renderVirtuell(); depotLock();
+  renderKandidaten(); renderHistorie(); renderKante(); renderBacktest();
+  renderVirtuell(); depotLock();
   puls();
   beobachteGruppe($('#highlights'));
   beobachteGruppe($('.security-grid'));

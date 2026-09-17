@@ -6,9 +6,16 @@ body:
   - type: markdown
     attributes:
       value: |
-        Titel auf den Ticker aendern. Einstand ist der Schlusskurs des
-        Tages, an dem dieses Issue entsteht, Einsatz 1.000 Euro wie bei
-        jeder anderen Position.
+        Titel auf den Ticker aendern. Einsatz 1.000 Euro abzueglich Kosten,
+        wie bei jeder anderen Position.
+  - type: input
+    id: datum
+    attributes:
+      label: Einstandsdatum
+      description: Nur wenn nicht heute. Format JJJJ-MM-TT, hoechstens 30 Tage zurueck.
+      placeholder: 2026-09-11
+    validations:
+      required: false
   - type: textarea
     id: notiz
     attributes:

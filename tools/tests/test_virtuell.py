@@ -1,14 +1,16 @@
 """Selbsttest fuer tools/virtuell.py, ohne Netz.
 
-Kurse und Wechselkurse werden durch feste Werte ersetzt, damit jede
-Rechnung von Hand nachpruefbar ist. Der Test prueft genau die Stellen, an
-denen sich ein Denkfehler nicht von selbst zeigen wuerde: Stueckzahl,
-Waehrungseffekt, Ueberrendite in Dollar statt in Euro, und dass ein
-fehlgeschlagener Abruf alte Werte stehen laesst.
+Kurse und Wechselkurse werden durch feste Werte ersetzt, damit jede Rechnung
+von Hand nachpruefbar ist. Geprueft werden die Stellen, an denen sich ein
+Denkfehler nicht von selbst zeigen wuerde: Stueckzahl nach Kosten,
+Waehrungseffekt, Ueberrendite in Dollar statt in Euro, der Volatilitaetsstop,
+das Datumsfeld im Issue, die Groessengrenze auf der Kaufseite und die Regel,
+dass ein fehlgeschlagener Abruf alte Werte stehen laesst.
 """
 import datetime as dt
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -25,7 +27,17 @@ def pruefe(name, ist, soll, tol=0.01):
         FEHLER.append(name)
 
 
-# ── feste Kurse ──────────────────────────────────────────────────────────
+def pruefe_gleich(name, ist, soll):
+    ok = ist == soll
+    print(("  ok   " if ok else "  FEHL ") + f"{name}: ist={ist} soll={soll}")
+    if not ok:
+        FEHLER.append(name)
+
+
+print(f"Kostensatz je Seite: {V.KOSTEN_PCT_JE_SEITE:.4f} %")
+# 1 Euro Gebuehr auf 100 Euro Ordergroesse sind 1,00 %, plus 0,25 % Spread.
+pruefe("Kostensatz je Seite", V.KOSTEN_PCT_JE_SEITE, 1.25)
+
 REIHEN = {
     "NVDA":  {"2026-09-01": 100.0, "2026-09-11": 130.0},
     "^GSPC": {"2026-09-01": 5000.0, "2026-09-11": 5500.0},
@@ -53,50 +65,117 @@ depot = {
     "summe": {}, "hinweise": [],
 }
 
-print("Bewertung")
+print("Bewertung mit Kosten")
 V.bewerte(depot)
 a, b = depot["positionen"]
 
-# Einsatz 1000 EUR, Einstand 100 USD, FX 0,90 EUR je USD
-# -> 1000 / (100 * 0,90) = 11,1111 Stueck
-pruefe("Stueckzahl", a["stueck"], 11.1111, 0.001)
-# Wert jetzt: 11,1111 * 130 USD * 1,00 = 1444,44 EUR
-pruefe("Wert in Euro", a["wert_eur"], 1444.44, 0.05)
-pruefe("Rendite in Euro", a["rendite_pct"], 44.44, 0.05)
-# Kurs allein: 130/100 - 1 = 30 %
-pruefe("Kursrendite in Dollar", a["kurs_pct"], 30.0)
-# Waehrungseffekt: 44,44 - 30 = 14,44 Punkte
-pruefe("Waehrungseffekt", a["waehrungseffekt_pct"], 14.44, 0.05)
-# Benchmark 5000 -> 5500 = 10 %; Ueberrendite 30 - 10 = 20 Punkte,
-# ausdruecklich NICHT 44,44 - 10
+# Investiert werden 1000 minus 1,25 % Kaufkosten, also 987,50 Euro.
+# 987,50 / (100 USD * 0,90) = 10,972222 Stueck.
+pruefe("Stueckzahl nach Kaufkosten", a["stueck"], 10.9722, 0.001)
+# Bruttowert: 10,972222 * 130 * 1,00 = 1426,39 Euro.
+pruefe("Bruttowert", a["brutto_wert_eur"], 1426.39, 0.05)
+# Nettowert nach Verkaufskosten: 1426,39 * 0,9875 = 1408,56 Euro.
+pruefe("Wert nach allen Kosten", a["wert_eur"], 1408.56, 0.05)
+pruefe("Rendite netto", a["rendite_pct"], 40.86, 0.05)
+pruefe("Rendite brutto", a["brutto_rendite_pct"], 42.64, 0.05)
+# Die Kosten kosten hier rund 1,8 Punkte Rendite.
+pruefe("Kostenlast in Punkten", a["kostenlast_pct"], -1.78, 0.05)
+pruefe("Kurs allein in Dollar", a["kurs_pct"], 30.0)
+pruefe("Waehrungseffekt", a["waehrungseffekt_pct"], 12.64, 0.05)
 pruefe("Benchmarkrendite", a["benchmark_pct"], 10.0)
-pruefe("Ueberrendite in Dollar", a["excess_pct"], 20.0)
+# Brutto: 30 minus 10 gleich 20 Punkte, ausdruecklich nicht 42,6 minus 10.
+pruefe("Ueberrendite brutto", a["excess_pct"], 20.0)
+# Nach Kosten: (0,9875^2 * 1,3 - 1) = 26,77 %, minus 10 gleich 16,77.
+pruefe("Ueberrendite nach Kosten", a["excess_netto_pct"], 16.77, 0.05)
 pruefe("Haltedauer in Tagen", float(a["tage"]), 10.0)
 
 print("Ausfall eines Abrufs")
 pruefe("alter Wert bleibt", b["wert_eur"], 1234.0)
 pruefe("alte Rendite bleibt", b["rendite_pct"], 23.4)
-print(("  ok   " if b.get("veraltet") else "  FEHL ") + "als veraltet markiert")
-if not b.get("veraltet"):
-    FEHLER.append("veraltet")
+pruefe_gleich("als veraltet markiert", bool(b.get("veraltet")), True)
+
+print("Delisteter Titel gilt nicht als aktuell")
+# Letzter Kurs vier Wochen alt: kein eingefrorener Stand, sondern kein Kurs.
+pruefe_gleich("alte Reihe ergibt None",
+              V.kurs_frisch({"2026-08-10": 50.0}), None)
+pruefe_gleich("frische Reihe ergibt Kurs",
+              V.kurs_frisch({"2026-09-09": 50.0}), ("2026-09-09", 50.0))
+
+print("Volatilitaetsstop")
+# Zwanzig Tage gleichmaessig plus eins, danach ein Einbruch auf 80.
+tage = [dt.date(2026, 9, 1) + dt.timedelta(days=i) for i in range(21)]
+ruhig = {t.isoformat(): 100.0 + i for i, t in enumerate(tage)}
+pruefe("mittlere Tagesschwankung", V.mittlere_tagesschwankung(ruhig, tage[-1].isoformat()), 1.0)
+pruefe_gleich("steigende Reihe loest nicht aus",
+              V.stop_pruefen({"opened": tage[0].isoformat()}, ruhig), None)
+
+absturz = dict(ruhig)
+absturz[(tage[-1] + dt.timedelta(days=1)).isoformat()] = 80.0
+treffer = V.stop_pruefen({"opened": tage[0].isoformat()}, absturz)
+pruefe_gleich("Einbruch loest aus", treffer is not None, True)
+if treffer:
+    pruefe_gleich("am Tag des Einbruchs", treffer["tag"], "2026-09-22")
+    pruefe("zum Einbruchskurs", treffer["kurs"], 80.0)
+    pruefe("Hoechststand gemerkt", treffer["hoechster"], 120.0)
+
+print("Datumsfeld im Issue")
+pruefe_gleich("gueltiges Datum", V.datum_aus_text("Datum: 2026-09-11", "2026-09-13"), "2026-09-11")
+pruefe_gleich("Kleinschreibung", V.datum_aus_text("datum 2026-09-11", "2026-09-13"), "2026-09-11")
+# So rendert GitHub ein Formularfeld: Ueberschrift, Leerzeile, Wert.
+pruefe_gleich("GitHub-Formular", V.datum_aus_text(
+    "### Datum der Aeusserung\n\n2026-09-11\n\n### Notiz\n\nTruth-Post", "2026-09-13"),
+    "2026-09-11")
+# Ohne Feldangabe wird das erste Datum im Text genommen.
+pruefe_gleich("Datum nur im Fliesstext", V.datum_aus_text(
+    "### Datum\n\n_No response_\n\n### Notiz\n\nPost vom 2026-09-12", "2026-09-13"),
+    "2026-09-12")
+pruefe_gleich("kein Datum", V.datum_aus_text("Truth-Post heute morgen", "2026-09-13"), None)
+# Ein Datum in der Zukunft waere Rueckschau, eines vor 40 Tagen ein Nachtrag,
+# der nicht mehr zu der Aeusserung gehoert.
+pruefe_gleich("Zukunft abgelehnt", V.datum_aus_text("Datum: 2026-09-20", "2026-09-13"), None)
+pruefe_gleich("zu weit zurueck abgelehnt", V.datum_aus_text("Datum: 2026-07-01", "2026-09-13"), None)
+
+print("Groessengrenze auf der Kaufseite")
+def dossier(sym, score, cap, name=None):
+    return {"candidate": {"symbol": sym, "name": name or sym, "sector": "Tech",
+                          "market_cap": cap},
+            "scorecard": {"total": score, "reliable": True}, "price": 10.0,
+            "industry": "Semiconductors"}
+
+with tempfile.TemporaryDirectory() as tmp:
+    pfad = Path(tmp) / "latest.json"
+    pfad.write_text(json.dumps({
+        "generated_at": "2026-09-10T09:00:00",
+        "dossiers": [dossier("SMALL", 70.0, 5e9)],
+        "dossiers_large_cap": [dossier("HUGE", 80.0, 400e9), dossier("NEXT", 75.0, 3e9)],
+        "dossiers_early_bets": [dossier("GOOGL", 64.0, 2_000e9)],
+    }), encoding="utf-8")
+    V.LATEST_DATEI = pfad
+    d2 = {"positionen": [], "einsatz_eur": 1000.0, "hinweise": []}
+    meldungen = V.aus_screening(d2)
+    syms = [p["symbol"] for p in d2["positionen"]]
+    pruefe_gleich("nur der kleine Titel wird gekauft", syms, ["SMALL"])
+    pruefe_gleich("kein Nachruecken auf den Zweitbesten", "NEXT" in syms, False)
+    pruefe_gleich("Grund steht im Protokoll",
+                  any("ueber der Kaufgrenze" in m for m in meldungen), True)
+    pruefe_gleich("Branche wandert mit", d2["positionen"][0]["branche"], "Semiconductors")
+    pruefe_gleich("Eroeffnung ist heute, nicht der Datenstand",
+                  d2["positionen"][0]["opened"], "2026-09-11")
+    pruefe_gleich("Datenstand separat vermerkt",
+                  d2["positionen"][0]["datenstand"], "2026-09-10")
 
 print("Summen")
 V.summiere(depot)
 s = depot["summe"]
-# Nur NVDA hat gueltige Werte, PLTR zaehlt mit seinem alten Wert mit
 pruefe("gesamt Einsatz", s["gesamt"]["einsatz_eur"], 2000.0)
-pruefe("trump Rendite", s["trump"]["rendite_pct"], 44.44, 0.05)
-pruefe("trump Ueberrendite Median", s["trump"]["median_excess_pct"], 20.0)
-print(("  ok   " if s["trump"]["besser_als_benchmark"] == 1 else "  FEHL ")
-      + "trump schlaegt Benchmark: " + str(s["trump"]["besser_als_benchmark"]))
+pruefe("trump Rendite", s["trump"]["rendite_pct"], 40.86, 0.05)
+pruefe("trump Ueberrendite nach Kosten", s["trump"]["median_excess_pct"], 16.77, 0.05)
+pruefe_gleich("trump schlaegt Benchmark", s["trump"]["besser_als_benchmark"], 1)
 
 print("Tickererkennung")
 for titel, soll in [("NVDA kaufen laut Truth-Post", "NVDA"), ("  aapl  ", "AAPL"),
                     ("BRK.B", "BRK.B"), ("", "")]:
-    ist = V.ticker_aus_titel(titel)
-    print(("  ok   " if ist == soll else "  FEHL ") + f"{titel!r} -> {ist!r}")
-    if ist != soll:
-        FEHLER.append("ticker " + titel)
+    pruefe_gleich(f"{titel!r}", V.ticker_aus_titel(titel), soll)
 
 print("Kurs am Wochenende nimmt den Tag davor, nie danach")
 pruefe("Sonntagseinstand", V.kurs_am(REIHEN["NVDA"], "2026-09-07"), 100.0)

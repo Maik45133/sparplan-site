@@ -1,10 +1,10 @@
-# Woechentlicher Lauf fuer das virtuelle Depot.
+# Woechentlicher Lauf: virtuelles Depot und Score-Register.
 #
 # Laeuft auf GitHub, nicht auf Maiks Mac: beide Arbeitsumgebungen dort
 # erreichen keine Kursquelle, die Actions-Runner haben offenes Netz.
 # Oeffentliche Repos haben unbegrenzte Actions-Minuten, und in diesem Lauf
 # steckt kein Sprachmodell. Er kostet also weder Geld noch Claude-Credits.
-name: Virtuelles Depot
+name: Wochenlauf
 
 on:
   schedule:
@@ -14,11 +14,11 @@ on:
   workflow_dispatch:        # Knopf "Run workflow" fuer sofort
 
 permissions:
-  contents: write           # schreibt data/virtual_portfolio.json zurueck
+  contents: write           # schreibt die beiden Datendateien zurueck
   issues: write             # schliesst die eingelesenen Issues
 
 concurrency:
-  group: virtuelles-depot
+  group: wochenlauf
   cancel-in-progress: false
 
 jobs:
@@ -31,13 +31,22 @@ jobs:
         with:
           python-version: "3.12"
 
-      # yfinance ist die erste Kursquelle, Stooq der Rueckfall im Skript
-      # selbst. Faellt die Installation aus, laeuft das Skript trotzdem
-      # weiter und nimmt Stooq.
+      # yfinance ist die erste Kursquelle, Stooq der Rueckfall im Code selbst.
+      # Faellt die Installation aus, laeuft der Job trotzdem weiter.
       - name: Abhaengigkeiten
         run: pip install --quiet yfinance || true
 
-      - name: Lauf
+      - name: Selbsttests
+        run: |
+          python tools/tests/test_virtuell.py
+          python tools/tests/test_register.py
+
+      # Erst das Register, dann das Depot: beide holen Kurse, und das Register
+      # braucht ohnehin die breitere Symbolliste.
+      - name: Score-Register
+        run: python tools/register.py
+
+      - name: Virtuelles Depot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -45,12 +54,12 @@ jobs:
 
       - name: Zurueckschreiben
         run: |
-          if git diff --quiet -- data/virtual_portfolio.json; then
+          if git diff --quiet -- data/; then
             echo "Keine Aenderung."
             exit 0
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/virtual_portfolio.json
-          git commit -m "Virtuelles Depot aktualisiert"
+          git add data/virtual_portfolio.json data/score_register.json
+          git commit -m "Wochenlauf: Depot und Score-Register aktualisiert"
           git push

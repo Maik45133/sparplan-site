@@ -7,17 +7,26 @@ body:
     attributes:
       value: |
         Titel dieses Issues auf den Ticker aendern, zum Beispiel `NVDA`.
-        Alles nach dem ersten Wort wird ignoriert, du kannst also
-        `NVDA Truth-Post vom Morgen` schreiben.
+        Alles nach dem ersten Wort wird ignoriert.
 
-        Der Einstandskurs ist der Schlusskurs des Tages, an dem du dieses
-        Issue anlegst. Der woechentliche Lauf holt ihn nach und schliesst
-        das Issue automatisch.
+        **Jeden Fall eintragen, auch die langweiligen.** Wer nur die Faelle
+        eintraegt, die auffaellig gestiegen sind, bekommt am Ende zuverlaessig
+        ein gutes Ergebnis, ganz unabhaengig davon, ob eines existiert.
+  - type: input
+    id: datum
+    attributes:
+      label: Datum der Aeusserung
+      description: >
+        Nur ausfuellen, wenn es nicht heute war. Format JJJJ-MM-TT, hoechstens
+        30 Tage zurueck. Ohne Angabe ist der Einstand der Schlusskurs von heute.
+      placeholder: 2026-09-11
+    validations:
+      required: false
   - type: textarea
     id: notiz
     attributes:
       label: Notiz
-      description: Was genau wurde gesagt, wo, wann. Landet als Notiz an der Position.
-      placeholder: Truth-Social-Post vom 13.09., sinngemaess ...
+      description: Was genau wurde gesagt, wo. Landet als Notiz an der Position.
+      placeholder: Truth-Social-Post, sinngemaess ...
     validations:
       required: false

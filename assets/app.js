@@ -278,7 +278,8 @@ function urteil(s){
   return {t:'Nachrangig', k:'low'};
 }
 const treiber = s => (s.components || [])
-  .filter(k => k.normalized >= 70).sort((a, b) => b.normalized - a.normalized)
+  .filter(k => k.normalized >= 70 && !k.ausgeschlossen)
+  .sort((a, b) => b.normalized - a.normalized)
   .slice(0, 2).map(k => KURZ[k.name] || k.name);
 
 const korbListe = id => (D[KOERBE[id].d] || []).map(d => ({...d, korb:id}))
@@ -366,7 +367,7 @@ function closeSheet(){
    mitgezogen werden. */
 function kaufTreiber(s){
   return (s.components || [])
-    .filter(c => c.normalized != null && c.normalized >= 70)
+    .filter(c => c.normalized != null && c.normalized >= 70 && !c.ausgeschlossen)
     .sort((a, b) => b.normalized * b.weight - a.normalized * a.weight)
     .slice(0, 3)
     .map(c => ({name:c.name, percentile:c.normalized, weight:c.weight}));
@@ -408,13 +409,21 @@ function detail(d){
   const u = urteil(s), K = KOERBE[d.korb] || KOERBE.klein;
   const k = kursJetzt();
 
+  /* Eine Komponente kann belegt sein und trotzdem nicht zählen: wenn alle
+     Titel der Kohorte denselben Rang haben, verschiebt sie die Reihenfolge um
+     nichts. Sie fällt dann aus der Gewichtung. Das muss hier sichtbar sein,
+     sonst ergeben die Prozentzahlen in der Liste zusammen mehr als das, was
+     den Score tatsächlich gebildet hat. */
   const komp = (s.components || []).map(x => `
-    <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+    <div style="padding:10px 0;border-bottom:1px solid var(--line)${x.ausgeschlossen ? ';opacity:.55' : ''}">
       <div style="display:flex;justify-content:space-between;font-size:14px">
-        <span>${label(KOMPONENTE, x.name)} <span class="muted">${x.weight} %</span></span>
+        <span>${label(KOMPONENTE, x.name)} <span class="muted">${x.ausgeschlossen ? `${x.weight} % ungenutzt` : `${x.weight} %`}</span></span>
         <span class="mono">${nf(x.normalized, 0)}</span>
       </div>
       <div class="bar"><i data-w="${Math.max(2, Math.min(100, x.normalized))}"></i></div>
+      ${x.ausgeschlossen ? `<div class="muted" style="font-size:11.5px;margin-top:5px">
+        Zählt nicht: ${esc(x.ausgeschlossen)}, trennt das Feld also nicht. Das Gewicht
+        verteilt sich auf die übrigen Komponenten.</div>` : ''}
     </div>`).join('');
 
   const rows = [

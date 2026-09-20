@@ -47,6 +47,7 @@ still aus der Rechnung, sieht der Score besser aus, als er ist. Die Zahl
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import math
 import sys
@@ -211,6 +212,36 @@ def t_wert(werte: list[float]) -> float | None:
 # ── Register lesen und schreiben ─────────────────────────────────────────
 
 
+def score_fassung(gewichte: dict) -> str:
+    """Kennung der Score-Zusammensetzung, aus Komponenten und Gewichten.
+
+    Der Score hat sich binnen vier Wochen zweimal geaendert: erst kamen die
+    Kursmerkmale dazu, dann fiel die Gewichtung der Revisionen. Ein IC ueber
+    alte und neue Eintraege zusammen mittelt zwei verschiedene Verfahren zu
+    einer Zahl, die keines von beiden beschreibt.
+
+    Bewusst abgeleitet statt von Hand gepflegt: Eine Versionsnummer, die
+    jemand hochzaehlen muss, wird irgendwann vergessen, und dann ist der
+    Schaden unsichtbar. Diese Kennung aendert sich von allein, sobald sich
+    eine Komponente oder ein Gewicht aendert. Die Rohwerte selbst gehen nicht
+    ein, nur die Bauweise.
+    """
+    teile = "|".join(f"{n}:{w}" for n, w in sorted((gewichte or {}).items()))
+    if not teile:
+        return "leer"
+    kurz = hashlib.sha256(teile.encode("utf-8")).hexdigest()[:6]
+    return f"{len(gewichte)}k-{kurz}"
+
+
+def aktuelle_fassung(register: dict) -> str | None:
+    """Die Fassung des juengsten Laufs. Sie gibt den Massstab vor."""
+    laeufe = sorted(register.get("laeufe") or [], key=lambda l: l["datenstand"])
+    if not laeufe:
+        return None
+    letzter = laeufe[-1]
+    return letzter.get("fassung") or score_fassung(letzter.get("gewichte") or {})
+
+
 def leeres_register() -> dict:
     return {"updated_at": None, "horizonte": list(HORIZONTE),
             "min_wochen": MIN_WOCHEN, "laeufe": [], "zusammenfassung": {},
@@ -287,6 +318,7 @@ def einfrieren(register: dict, quelle: Path | None = None) -> list[str]:
         "datenstand": stand,
         "eingefroren_am": heute().isoformat(),
         "gewichte": gewichte,
+        "fassung": score_fassung(gewichte),
         "kandidaten": kandidaten,
         "auswertung": {},
     })
@@ -412,22 +444,38 @@ def je_woche(paare: list[tuple[str, float]]) -> list[float]:
 
 
 def zusammenfassen(register: dict) -> None:
+    # Nur Laeufe derselben Score-Fassung. Ein Mittelwert ueber zwei Verfahren
+    # beschreibt keines von beiden, und er sieht dabei genauso serioes aus wie
+    # ein richtiger. Massstab ist die Fassung des juengsten Laufs: Was gerade
+    # gemessen werden soll, ist das Verfahren, das gerade laeuft.
+    aktuell = aktuelle_fassung(register)
+    alle = register.get("laeufe") or []
+    laeufe = [l for l in alle
+              if (l.get("fassung") or score_fassung(l.get("gewichte") or {})) == aktuell]
+    verworfen = len(alle) - len(laeufe)
+
+    zaehlung: dict[str, int] = {}
+    for l in alle:
+        f = l.get("fassung") or score_fassung(l.get("gewichte") or {})
+        zaehlung[f] = zaehlung.get(f, 0) + 1
+    register["fassungen"] = {"aktuell": aktuell, "laeufe_je_fassung": zaehlung}
+
     summe: dict[str, dict] = {}
     for h in HORIZONTE:
         roh = [(l["datenstand"], l["auswertung"][str(h)]["ic"])
-               for l in register["laeufe"]
+               for l in laeufe
                if l["auswertung"].get(str(h))
                and l["auswertung"][str(h)].get("ic") is not None]
         ics = je_woche(roh)
         roh_spread = [(l["datenstand"], l["auswertung"][str(h)]["terzil_abstand"])
-                      for l in register["laeufe"]
+                      for l in laeufe
                       if l["auswertung"].get(str(h))
                       and l["auswertung"][str(h)].get("terzil_abstand") is not None]
         spreads = je_woche(roh_spread)
 
         # Je Komponente, ebenfalls auf Wochen verdichtet.
         komp: dict[str, list[tuple[str, float]]] = {}
-        for l in register["laeufe"]:
+        for l in laeufe:
             a = l["auswertung"].get(str(h))
             if not a:
                 continue
@@ -435,7 +483,7 @@ def zusammenfassen(register: dict) -> None:
                 if w.get("ic") is not None:
                     komp.setdefault(name, []).append((l["datenstand"], w["ic"]))
 
-        ausgewertet = sum(1 for l in register["laeufe"] if l["auswertung"].get(str(h))
+        ausgewertet = sum(1 for l in laeufe if l["auswertung"].get(str(h))
                           and l["auswertung"][str(h)].get("ic") is not None)
         summe[str(h)] = {
             "laeufe": ausgewertet,
@@ -447,6 +495,8 @@ def zusammenfassen(register: dict) -> None:
             "terzil_abstand_mittel": round(mittel(spreads), 2) if spreads else None,
             "belastbar": len(ics) >= MIN_WOCHEN,
             "wochen_fehlend": max(0, MIN_WOCHEN - len(ics)),
+            "fassung": aktuell,
+            "laeufe_andere_fassung": verworfen,
             "komponenten": {
                 name: {"wochen": len(je_woche(v)),
                        "ic_mittel": round(mittel(je_woche(v)), 3),

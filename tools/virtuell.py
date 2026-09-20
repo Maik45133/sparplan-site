@@ -87,14 +87,42 @@ K = KOSTEN_PCT_JE_SEITE / 100  # Kurzform fuer die Rechnung
 # sich die Qualitaet der Rangfolge messen, ohne dafuer Positionen zu brauchen.
 NEU_JE_KORB = 1
 
-# Obergrenze fuer die Kaufseite. Bei Standardwerten ab zwanzig Milliarden hat
-# ein woechentliches Python-Skript keine Aussicht auf einen Vorsprung: Diese
-# Titel sind die meistanalysierten der Welt. Dazu kommt, dass Maiks echtes
-# Depot durch die ETF hindurch bereits zu rund 45 Prozent aus zwei Titeln
-# dieses Segments besteht. Der grosse Korb bleibt auf der Seite sichtbar, er
-# wird nur nicht mehr gekauft. Die Grenze gilt fuer alle Koerbe, weil auch der
-# 13F-Korb regelmaessig Standardwerte ausgeworfen hat.
-MAX_MARKTKAPITAL_KAUF = 20e9
+# Obergrenze fuer die Kaufseite, je Korb.
+#
+# Eine einzige Grenze von zwanzig Milliarden fuer alle Koerbe war ein
+# Denkfehler: Der Korb "Grosse Werte" faengt per Definition bei zwanzig
+# Milliarden an und lag damit immer darueber. Kein Titel daraus konnte je
+# gekauft werden, und der Korb produzierte jede Woche nur einen
+# Uebersprungen-Hinweis. Eine Regel, die einen ganzen Korb stilllegt, gehoert
+# nicht aus zwei Konstanten abgeleitet, sondern entschieden.
+#
+# Entschieden am 20.09.2026: Jeder Korb bekommt seine eigene Grenze.
+#
+# "klein" behaelt zwanzig Milliarden, das ist die Obergrenze der Korbdefinition
+# selbst, die Grenze faengt dort also nur noch Datenfehler ab.
+#
+# "gross" und "frueh" bekommen eine Billion. Diese Zahl ist eine Setzung, keine
+# Messung, und sie soll auch nicht als eine gelesen werden. Der Gedanke
+# dahinter: Ueber einer Billion stehen die wenigen groessten Unternehmen der
+# Welt. Dass ein Screening-Verfahren dort einen Vorsprung findet, ist
+# unwahrscheinlich, und die erwartete Wachstumsrate faellt mit der Groesse, das
+# ist einer der bestbelegten Zusammenhaenge am Aktienmarkt. Darunter bleibt
+# alles kaufbar, was sich realistisch noch verdoppeln kann.
+#
+# Der Preis dieser Entscheidung, offen benannt: Titel wie NVDA oder GOOGL
+# erscheinen weiter im Screening, koennen aber nie ins virtuelle Depot. Wer
+# sie messen will, hebt die Grenze fuer den jeweiligen Korb an.
+MAX_MARKTKAPITAL_KAUF = {
+    "klein": 20e9,
+    "gross": 1_000e9,
+    "frueh": 1_000e9,
+}
+MAX_MARKTKAPITAL_KAUF_STANDARD = 20e9   # fuer einen Korb ohne eigenen Eintrag
+
+
+def kaufgrenze(korb: str) -> float:
+    """Obergrenze der Marktkapitalisierung fuer die Kaufseite dieses Korbs."""
+    return MAX_MARKTKAPITAL_KAUF.get(korb, MAX_MARKTKAPITAL_KAUF_STANDARD)
 
 KOERBE = {
     "klein": {"feld": "dossiers", "benchmark": "IWO", "titel": "Wachstum"},
@@ -395,13 +423,14 @@ def aus_screening(depot: dict) -> list[str]:
             if card.get("reliable") is False:
                 continue
             kap = kand.get("market_cap")
-            if kap is not None and kap > MAX_MARKTKAPITAL_KAUF:
+            grenze = kaufgrenze(korb)
+            if kap is not None and kap > grenze:
                 # Kein Nachruecken: ist der Beste des Korbs zu gross, bleibt
                 # der Platz leer. Der zweitbeste ist nicht die Auswahl, die
                 # das Verfahren getroffen hat.
                 meldungen.append(
                     f"{sym} uebersprungen, {kap / 1e9:.1f} Mrd ueber der Kaufgrenze "
-                    f"({MAX_MARKTKAPITAL_KAUF / 1e9:.0f} Mrd), Korb {korb}.")
+                    f"({grenze / 1e9:.0f} Mrd), Korb {korb}.")
                 genommen += 1
                 continue
             if sym in offen or sym in jemals:
@@ -635,7 +664,7 @@ def schreibe(depot: dict, meldungen: list[str]) -> None:
         "spread_pct_je_seite": SPREAD_PCT_JE_SEITE,
     }
     depot["stop"] = {"faktor": STOP_FAKTOR, "fenster": STOP_FENSTER}
-    depot["max_marktkapital_kauf"] = MAX_MARKTKAPITAL_KAUF
+    depot["max_marktkapital_kauf"] = dict(MAX_MARKTKAPITAL_KAUF)
     PORTFOLIO_DATEI.parent.mkdir(parents=True, exist_ok=True)
     PORTFOLIO_DATEI.write_text(
         json.dumps(depot, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

@@ -133,6 +133,70 @@ pruefe_gleich("aus vier Laeufen werden zwei Wochen", len(verdichtet), 2)
 pruefe("erste Woche gemittelt", verdichtet[0], 0.4)
 pruefe("zweite Woche unveraendert", verdichtet[1], 0.1)
 
+
+
+# ── Score-Fassung ────────────────────────────────────────────────────────
+#
+# Der Score hat sich in vier Wochen zweimal geaendert. Ein IC ueber alte und
+# neue Eintraege zusammen mittelt zwei Verfahren zu einer Zahl, die keines von
+# beiden beschreibt, und sieht dabei genauso serioes aus wie ein richtiger.
+
+print("Score-Fassung")
+ALT = {"revision_momentum": 25, "growth_acceleration": 15, "margin_trend": 10,
+       "fcf_trend": 10, "insider_cluster": 10, "dilution": 5}
+NEU = {"momentum_12_1": 20, "revision_momentum": 15, "growth_acceleration": 15,
+       "earnings_drift": 15, "margin_trend": 10, "fcf_trend": 10,
+       "insider_cluster": 10, "dilution": 5}
+
+pruefe_gleich("andere Komponenten, andere Fassung",
+              R.score_fassung(ALT) != R.score_fassung(NEU), True)
+GEDREHT = dict(reversed(list(NEU.items())))
+pruefe_gleich("Reihenfolge im dict aendert nichts",
+              R.score_fassung(GEDREHT), R.score_fassung(NEU))
+NUR_GEWICHT = dict(NEU, dilution=6)
+pruefe_gleich("ein geaendertes Gewicht reicht",
+              R.score_fassung(NUR_GEWICHT) != R.score_fassung(NEU), True)
+
+print("Auswertung mischt keine Fassungen")
+
+
+def lauf(stand, gewichte, ic):
+    return {"datenstand": stand, "gewichte": gewichte,
+            "fassung": R.score_fassung(gewichte),
+            "kandidaten": [],
+            "auswertung": {"30": {"ic": ic, "terzil_abstand": 1.0,
+                                  "ic_komponenten": {}}}}
+
+
+reg = R.leeres_register()
+reg["laeufe"] = [
+    # Zwei alte Laeufe mit glaenzendem IC, aber nach altem Verfahren.
+    lauf("2026-07-06", ALT, 0.9),
+    lauf("2026-07-13", ALT, 0.9),
+    # Zwei neue, bescheidener, aber nach dem Verfahren, das heute laeuft.
+    lauf("2026-08-03", NEU, 0.1),
+    lauf("2026-08-10", NEU, 0.2),
+]
+R.zusammenfassen(reg)
+z = reg["zusammenfassung"]["30"]
+pruefe_gleich("nur die neue Fassung zaehlt", z["wochen"], 2)
+pruefe("IC kommt aus den neuen Laeufen", z["ic_mittel"], 0.15, 0.001)
+pruefe_gleich("die alten sind gezaehlt, nicht verschwiegen",
+              z["laeufe_andere_fassung"], 2)
+pruefe_gleich("Massstab ist die Fassung des juengsten Laufs",
+              z["fassung"], R.score_fassung(NEU))
+pruefe_gleich("Uebersicht nennt beide Fassungen",
+              sorted(reg["fassungen"]["laeufe_je_fassung"].values()), [2, 2])
+
+# Ohne das Feld "fassung", also bei Eintraegen aus der Zeit davor, wird sie
+# aus den mitgespeicherten Gewichten abgeleitet. Die alten Laeufe im echten
+# Register haben ihre Gewichte dabei, deshalb geht das ohne Nacharbeit.
+for l in reg["laeufe"]:
+    l.pop("fassung", None)
+R.zusammenfassen(reg)
+pruefe_gleich("Fassung wird notfalls aus den Gewichten abgeleitet",
+              reg["zusammenfassung"]["30"]["wochen"], 2)
+
 print()
 if FEHLER:
     print("FEHLGESCHLAGEN: " + ", ".join(FEHLER))

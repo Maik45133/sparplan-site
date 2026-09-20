@@ -610,13 +610,19 @@ function renderKandidaten(){
    Ausgeschlossen wird ein Titel nur aus einem Grund: `reliable === false`,
    also zu große Datenlücken. Ein Score aus halben Daten ist keine Auswahl,
    sondern eine gut aussehende Zahl. */
-/* Dieselbe Obergrenze wie MAX_MARKTKAPITAL_KAUF in tools/virtuell.py.
-   Bei Standardwerten ab zwanzig Milliarden hat ein wöchentliches Skript keine
-   Aussicht auf einen Vorsprung: Das sind die meistanalysierten Aktien der
-   Welt. Dazu kommt, dass das echte Depot durch die ETF hindurch bereits zu
-   rund 45 Prozent aus zwei Titeln dieses Segments besteht. Die großen Werte
-   bleiben im Katalog sichtbar, sie werden nur nicht mehr vorgeschlagen. */
-const MAX_KAP_KAUF = 20e9;
+/* Dieselben Obergrenzen wie MAX_MARKTKAPITAL_KAUF in tools/virtuell.py. Beide
+   Stellen müssen zusammen geändert werden, sonst schlägt die Seite etwas vor,
+   das der Wochenlauf nicht kauft.
+
+   Eine einzige Grenze für alle Körbe war ein Denkfehler: Der Korb "Große
+   Werte" fängt per Definition bei zwanzig Milliarden an und lag damit immer
+   darüber, konnte also nie etwas liefern. Seit dem 20.09.2026 hat jeder Korb
+   seine eigene Grenze. Die Billion für die beiden großen Körbe ist eine
+   Setzung, keine Messung: Darüber stehen die wenigen größten Unternehmen der
+   Welt, und die erwartete Wachstumsrate fällt mit der Größe. */
+const MAX_KAP_KAUF = { klein: 20e9, gross: 1000e9, frueh: 1000e9 };
+const MAX_KAP_KAUF_STANDARD = 20e9;
+const kaufgrenze = korb => MAX_KAP_KAUF[korb] ?? MAX_KAP_KAUF_STANDARD;
 
 function spitzenJeKorb(){
   return Object.keys(KOERBE).map(id => {
@@ -626,7 +632,7 @@ function spitzenJeKorb(){
        unbegründete Entscheidungsregel. */
     const bester = korbListe(id).find(d => d.scorecard && d.scorecard.reliable !== false);
     if (!bester) return null;
-    if (bester.candidate.market_cap != null && bester.candidate.market_cap > MAX_KAP_KAUF)
+    if (bester.candidate.market_cap != null && bester.candidate.market_cap > kaufgrenze(id))
       return {...bester, korb:id, zuGross:true};
     return {...bester, korb:id};
   }).filter(Boolean);
@@ -657,8 +663,8 @@ function renderEmpfehlung(){
   const kaufbar = spitzen.filter(d => !d.zuGross);
   if (!kaufbar.length){
     el.innerHTML = `<div class="card"><h3 class="gold">Diesmal kein Vorschlag</h3>
-      <p>Die besten Titel aller Körbe liegen über der Größengrenze von
-      ${mrd(MAX_KAP_KAUF)} und werden deshalb nicht vorgeschlagen.
+      <p>Die besten Titel aller Körbe liegen über der Größengrenze ihres Korbs
+      und werden deshalb nicht vorgeschlagen.
       ${spitzen.length ? 'Betroffen: ' + spitzen.map(d => esc(d.candidate.symbol)).join(', ') + '.' : ''}
       Nichts zu tun ist ein normales Ergebnis, kein Leerlauf.</p></div>`;
     return;
@@ -1106,6 +1112,8 @@ function renderKante(){
       <div class="kv"><span>Unabhängige Wochen</span>
         <span class="${z.belastbar ? '' : 'gold'}">${z.wochen || 0} von ${noetig}</span></div>
       <div class="kv"><span>Ausgewertete Läufe</span><span>${z.laeufe || 0} von ${laeufe.length}</span></div>
+      ${z.laeufe_andere_fassung ? `<div class="kv"><span>Aus älterer Score-Fassung</span>
+        <span class="gold">${z.laeufe_andere_fassung} nicht gezählt</span></div>` : ''}
       <div class="kv"><span>Beobachtete Kandidaten</span><span>${kandidaten}</span></div>
       <div class="kv"><span>Wochen mit positivem Wert</span><span>${z.positive_wochen || 0} von ${z.wochen || 0}</span></div>
       <div class="kv"><span>Bestes gegen schlechtestes Drittel</span>
@@ -1121,6 +1129,10 @@ function renderKante(){
       wird jede Rendite um die des passenden Vergleichsindex bereinigt und geprüft, ob
       die Rangfolge nach Score zur Rangfolge nach Rendite passt. Plus eins hieße perfekt,
       null hieße kein Zusammenhang.</p>
+      <p>Gezählt werden nur Läufe <b>derselben Score-Fassung</b>. Ändert sich eine
+      Komponente oder ein Gewicht, beginnt die Zählung von vorn. Das ist unbequem,
+      aber ein Mittelwert über zwei verschiedene Verfahren beschreibt keines von
+      beiden und sieht dabei genauso seriös aus wie ein richtiger.</p>
       <p>Gezählt werden <b>Kalenderwochen, nicht Läufe</b>. Drei Läufe an drei
       aufeinanderfolgenden Tagen messen fast dieselbe Kohorte im fast selben Markt und
       werden zu einer Beobachtung gemittelt. Titel ohne Kurs am Stichtag sind meist

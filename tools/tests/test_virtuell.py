@@ -142,19 +142,34 @@ def dossier(sym, score, cap, name=None):
             "scorecard": {"total": score, "reliable": True}, "price": 10.0,
             "industry": "Semiconductors"}
 
+print("Kaufgrenzen je Korb")
+pruefe_gleich("klein bleibt bei 20 Mrd", V.kaufgrenze("klein"), 20e9)
+pruefe_gleich("gross erlaubt bis 1 Bio", V.kaufgrenze("gross"), 1_000e9)
+pruefe_gleich("frueh erlaubt bis 1 Bio", V.kaufgrenze("frueh"), 1_000e9)
+# Ein unbekannter Korb faellt auf den vorsichtigen Wert zurueck, nicht auf
+# den groesszuegigsten. Ein Tippfehler im Korbnamen soll nichts freigeben.
+pruefe_gleich("unbekannter Korb faellt vorsichtig zurueck",
+              V.kaufgrenze("tippfehler"), 20e9)
+
 with tempfile.TemporaryDirectory() as tmp:
     pfad = Path(tmp) / "latest.json"
     pfad.write_text(json.dumps({
         "generated_at": "2026-09-10T09:00:00",
+        # MID hat 400 Mrd. Im Korb "frueh" ist das erlaubt, im Korb "klein"
+        # waere es das nicht. Genau daran haengt die Entscheidung vom
+        # 20.09.2026: die Grenze gehoert zum Korb, nicht zum ganzen Verfahren.
         "dossiers": [dossier("SMALL", 70.0, 5e9)],
-        "dossiers_large_cap": [dossier("HUGE", 80.0, 400e9), dossier("NEXT", 75.0, 3e9)],
-        "dossiers_early_bets": [dossier("GOOGL", 64.0, 2_000e9)],
+        "dossiers_large_cap": [dossier("MEGA", 80.0, 2_000e9), dossier("NEXT", 75.0, 3e9)],
+        "dossiers_early_bets": [dossier("MID", 64.0, 400e9)],
     }), encoding="utf-8")
     V.LATEST_DATEI = pfad
     d2 = {"positionen": [], "einsatz_eur": 1000.0, "hinweise": []}
     meldungen = V.aus_screening(d2)
     syms = [p["symbol"] for p in d2["positionen"]]
-    pruefe_gleich("nur der kleine Titel wird gekauft", syms, ["SMALL"])
+    pruefe_gleich("jeder Korb kauft nach seiner eigenen Grenze",
+                  sorted(syms), ["MID", "SMALL"])
+    pruefe_gleich("ueber der eigenen Korbgrenze wird uebersprungen",
+                  "MEGA" in syms, False)
     pruefe_gleich("kein Nachruecken auf den Zweitbesten", "NEXT" in syms, False)
     pruefe_gleich("Grund steht im Protokoll",
                   any("ueber der Kaufgrenze" in m for m in meldungen), True)

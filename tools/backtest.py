@@ -65,6 +65,7 @@ MOMENTUM_START_TAGE = 365
 MOMENTUM_ENDE_TAGE = 30
 MAX_START_ABWEICHUNG_TAGE = 21
 MAX_KURSLUECKE_TAGE = 7
+MIN_REIHEN_ANTEIL = 0.5       # darunter ist der Lauf kaputt, nicht leer
 
 
 def heute() -> dt.date:
@@ -164,6 +165,20 @@ def main(argv: list[str]) -> int:
         time.sleep(0.15)
     gefuellt = sum(1 for r in reihen.values() if r)
     log(f"Kursreihen: {gefuellt} von {len(reihen)} gefuellt")
+
+    # Ohne Kurse rechnet alles weiter unten brav weiter und liefert lauter
+    # Nullergebnisse. Die Datei waere da, der Lauf gruen, und auf der Seite
+    # stuende "gemessen" ueber einer Messung, die nie stattgefunden hat. Ein
+    # kaputter Lauf muss rot sein, nicht leer.
+    fehlende_benchmarks = [b for b in benchmarks if not reihen.get(b)]
+    if fehlende_benchmarks:
+        log(f"Benchmark ohne Kurse: {fehlende_benchmarks}. Abbruch, keine Datei.")
+        return 2
+    if gefuellt < MIN_REIHEN_ANTEIL * len(reihen):
+        log(f"Nur {gefuellt} von {len(reihen)} Kursreihen gefuellt, unter "
+            f"{MIN_REIHEN_ANTEIL:.0%}. Das ist ein Datenfehler, keine Messung. "
+            f"Abbruch, keine Datei.")
+        return 2
 
     tage = stichtage(heute(), JAHRE)
     log(f"{len(tage)} Stichtage im Abstand von {HALTEDAUER_TAGE} Tagen")

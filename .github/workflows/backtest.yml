@@ -22,17 +22,21 @@ jobs:
         with:
           python-version: "3.12"
       - name: Abhaengigkeiten
-        run: pip install --quiet yfinance || true
+        run: pip install --quiet yfinance
       - name: Rueckrechnung
         run: python tools/backtest.py
       - name: Zurueckschreiben
         run: |
-          if git diff --quiet -- data/backtest.json; then
-            echo "Keine Aenderung."
-            exit 0
-          fi
+          # git diff sieht nur verfolgte Dateien. Beim allerersten Lauf ist
+          # data/backtest.json neu, diff meldet "keine Aenderung", und das
+          # Ergebnis verschwindet im gruenen Haken. Deshalb erst vormerken,
+          # dann gegen den Index pruefen.
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/backtest.json
+          if git diff --cached --quiet; then
+            echo "Keine Aenderung."
+            exit 0
+          fi
           git commit -m "Backtest der kursbasierten Merkmale"
           git push

@@ -1,0 +1,762 @@
+{
+  "updated_at": "2026-09-21T08:44:08+00:00",
+  "jahre": 5,
+  "haltedauer_tage": 28,
+  "min_stichtage": 24,
+  "titel": 77,
+  "kursreihen_gefuellt": 79,
+  "merkmale": {
+    "momentum_12_1": {
+      "stichtage": 52,
+      "ic_mittel": 0.0345,
+      "ic_median": 0.066,
+      "t": 0.95,
+      "positive_stichtage": 31,
+      "terzil_abstand_mittel": 1.615,
+      "belastbar": true,
+      "je_stichtag": [
+        {
+          "stichtag": "2022-09-26",
+          "n": 64,
+          "fehlend": 13,
+          "ic": 0.1804,
+          "terzil_abstand": 6.175
+        },
+        {
+          "stichtag": "2022-10-24",
+          "n": 64,
+          "fehlend": 13,
+          "ic": -0.168,
+          "terzil_abstand": -5.741
+        },
+        {
+          "stichtag": "2022-11-21",
+          "n": 64,
+          "fehlend": 13,
+          "ic": 0.1553,
+          "terzil_abstand": 3.835
+        },
+        {
+          "stichtag": "2022-12-19",
+          "n": 64,
+          "fehlend": 13,
+          "ic": -0.2485,
+          "terzil_abstand": -8.291
+        },
+        {
+          "stichtag": "2023-01-16",
+          "n": 64,
+          "fehlend": 13,
+          "ic": -0.4709,
+          "terzil_abstand": -13.245
+        },
+        {
+          "stichtag": "2023-02-13",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.1885,
+          "terzil_abstand": 3.305
+        },
+        {
+          "stichtag": "2023-03-13",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.0344,
+          "terzil_abstand": -0.841
+        },
+        {
+          "stichtag": "2023-04-10",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.1421,
+          "terzil_abstand": 9.143
+        },
+        {
+          "stichtag": "2023-05-08",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.3548,
+          "terzil_abstand": -18.8
+        },
+        {
+          "stichtag": "2023-06-05",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.1924,
+          "terzil_abstand": -2.126
+        },
+        {
+          "stichtag": "2023-07-03",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.215,
+          "terzil_abstand": -1.404
+        },
+        {
+          "stichtag": "2023-07-31",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.085,
+          "terzil_abstand": -7.781
+        },
+        {
+          "stichtag": "2023-08-28",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.0793,
+          "terzil_abstand": 3.927
+        },
+        {
+          "stichtag": "2023-09-25",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.3638,
+          "terzil_abstand": 8.181
+        },
+        {
+          "stichtag": "2023-10-23",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.3366,
+          "terzil_abstand": 14.983
+        },
+        {
+          "stichtag": "2023-11-20",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.2627,
+          "terzil_abstand": -7.429
+        },
+        {
+          "stichtag": "2023-12-18",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.0752,
+          "terzil_abstand": -6.318
+        },
+        {
+          "stichtag": "2024-01-15",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.4678,
+          "terzil_abstand": 5.448
+        },
+        {
+          "stichtag": "2024-02-12",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.0702,
+          "terzil_abstand": 2.34
+        },
+        {
+          "stichtag": "2024-03-11",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.1722,
+          "terzil_abstand": 2.16
+        },
+        {
+          "stichtag": "2024-04-08",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.1265,
+          "terzil_abstand": -1.883
+        },
+        {
+          "stichtag": "2024-05-06",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.0338,
+          "terzil_abstand": 2.459
+        },
+        {
+          "stichtag": "2024-06-03",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.2784,
+          "terzil_abstand": -7.91
+        },
+        {
+          "stichtag": "2024-07-01",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.3389,
+          "terzil_abstand": -9.449
+        },
+        {
+          "stichtag": "2024-07-29",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.1645,
+          "terzil_abstand": 4.709
+        },
+        {
+          "stichtag": "2024-08-26",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.2094,
+          "terzil_abstand": 4.452
+        },
+        {
+          "stichtag": "2024-09-23",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.2042,
+          "terzil_abstand": 3.612
+        },
+        {
+          "stichtag": "2024-10-21",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.2415,
+          "terzil_abstand": 12.789
+        },
+        {
+          "stichtag": "2024-11-18",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.1194,
+          "terzil_abstand": 4.211
+        },
+        {
+          "stichtag": "2024-12-16",
+          "n": 66,
+          "fehlend": 11,
+          "ic": -0.2538,
+          "terzil_abstand": -3.732
+        },
+        {
+          "stichtag": "2025-01-13",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.3437,
+          "terzil_abstand": 11.766
+        },
+        {
+          "stichtag": "2025-02-10",
+          "n": 66,
+          "fehlend": 11,
+          "ic": -0.351,
+          "terzil_abstand": -15.468
+        },
+        {
+          "stichtag": "2025-03-10",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.2208,
+          "terzil_abstand": 5.017
+        },
+        {
+          "stichtag": "2025-04-07",
+          "n": 68,
+          "fehlend": 9,
+          "ic": 0.2554,
+          "terzil_abstand": 7.659
+        },
+        {
+          "stichtag": "2025-05-05",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.0149,
+          "terzil_abstand": 3.651
+        },
+        {
+          "stichtag": "2025-06-02",
+          "n": 69,
+          "fehlend": 8,
+          "ic": -0.0856,
+          "terzil_abstand": 0.581
+        },
+        {
+          "stichtag": "2025-06-30",
+          "n": 69,
+          "fehlend": 8,
+          "ic": -0.2904,
+          "terzil_abstand": -6.373
+        },
+        {
+          "stichtag": "2025-07-28",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.1593,
+          "terzil_abstand": 5.257
+        },
+        {
+          "stichtag": "2025-08-25",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.4081,
+          "terzil_abstand": 15.422
+        },
+        {
+          "stichtag": "2025-09-22",
+          "n": 69,
+          "fehlend": 8,
+          "ic": -0.1018,
+          "terzil_abstand": -5.394
+        },
+        {
+          "stichtag": "2025-10-20",
+          "n": 69,
+          "fehlend": 8,
+          "ic": -0.0369,
+          "terzil_abstand": 3.673
+        },
+        {
+          "stichtag": "2025-11-17",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.0619,
+          "terzil_abstand": 5.594
+        },
+        {
+          "stichtag": "2025-12-15",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.3046,
+          "terzil_abstand": 9.747
+        },
+        {
+          "stichtag": "2026-01-12",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.0518,
+          "terzil_abstand": 2.444
+        },
+        {
+          "stichtag": "2026-02-09",
+          "n": 69,
+          "fehlend": 8,
+          "ic": -0.2184,
+          "terzil_abstand": -4.566
+        },
+        {
+          "stichtag": "2026-03-09",
+          "n": 70,
+          "fehlend": 7,
+          "ic": 0.3489,
+          "terzil_abstand": 10.715
+        },
+        {
+          "stichtag": "2026-04-06",
+          "n": 70,
+          "fehlend": 7,
+          "ic": 0.5183,
+          "terzil_abstand": 31.038
+        },
+        {
+          "stichtag": "2026-05-04",
+          "n": 70,
+          "fehlend": 7,
+          "ic": 0.2385,
+          "terzil_abstand": 10.453
+        },
+        {
+          "stichtag": "2026-06-01",
+          "n": 71,
+          "fehlend": 6,
+          "ic": 0.2612,
+          "terzil_abstand": 13.43
+        },
+        {
+          "stichtag": "2026-06-29",
+          "n": 73,
+          "fehlend": 4,
+          "ic": -0.542,
+          "terzil_abstand": -18.277
+        },
+        {
+          "stichtag": "2026-07-27",
+          "n": 73,
+          "fehlend": 4,
+          "ic": -0.2706,
+          "terzil_abstand": -8.573
+        },
+        {
+          "stichtag": "2026-08-24",
+          "n": 73,
+          "fehlend": 4,
+          "ic": 0.4108,
+          "terzil_abstand": 9.385
+        }
+      ]
+    },
+    "umkehr_1m": {
+      "stichtage": 52,
+      "ic_mittel": 0.0126,
+      "ic_median": 0.0349,
+      "t": 0.43,
+      "positive_stichtage": 28,
+      "terzil_abstand_mittel": 0.296,
+      "belastbar": true,
+      "je_stichtag": [
+        {
+          "stichtag": "2022-09-26",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.1851,
+          "terzil_abstand": 6.327
+        },
+        {
+          "stichtag": "2022-10-24",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.153,
+          "terzil_abstand": -8.425
+        },
+        {
+          "stichtag": "2022-11-21",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.0861,
+          "terzil_abstand": 1.124
+        },
+        {
+          "stichtag": "2022-12-19",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.1454,
+          "terzil_abstand": -1.377
+        },
+        {
+          "stichtag": "2023-01-16",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.0349,
+          "terzil_abstand": -0.36
+        },
+        {
+          "stichtag": "2023-02-13",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.1024,
+          "terzil_abstand": -4.403
+        },
+        {
+          "stichtag": "2023-03-13",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.0264,
+          "terzil_abstand": 1.52
+        },
+        {
+          "stichtag": "2023-04-10",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.1205,
+          "terzil_abstand": 4.793
+        },
+        {
+          "stichtag": "2023-05-08",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.1815,
+          "terzil_abstand": -12.278
+        },
+        {
+          "stichtag": "2023-06-05",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.0321,
+          "terzil_abstand": -3.571
+        },
+        {
+          "stichtag": "2023-07-03",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.1533,
+          "terzil_abstand": -4.336
+        },
+        {
+          "stichtag": "2023-07-31",
+          "n": 65,
+          "fehlend": 12,
+          "ic": -0.3312,
+          "terzil_abstand": -15.207
+        },
+        {
+          "stichtag": "2023-08-28",
+          "n": 65,
+          "fehlend": 12,
+          "ic": 0.0803,
+          "terzil_abstand": 1.903
+        },
+        {
+          "stichtag": "2023-09-25",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.2331,
+          "terzil_abstand": 5.38
+        },
+        {
+          "stichtag": "2023-10-23",
+          "n": 66,
+          "fehlend": 11,
+          "ic": -0.1836,
+          "terzil_abstand": -9.627
+        },
+        {
+          "stichtag": "2023-11-20",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.0145,
+          "terzil_abstand": 0.52
+        },
+        {
+          "stichtag": "2023-12-18",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.0647,
+          "terzil_abstand": 3.158
+        },
+        {
+          "stichtag": "2024-01-15",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.1992,
+          "terzil_abstand": 11.1
+        },
+        {
+          "stichtag": "2024-02-12",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.0912,
+          "terzil_abstand": 5.876
+        },
+        {
+          "stichtag": "2024-03-11",
+          "n": 66,
+          "fehlend": 11,
+          "ic": 0.2328,
+          "terzil_abstand": 6.295
+        },
+        {
+          "stichtag": "2024-04-08",
+          "n": 66,
+          "fehlend": 11,
+          "ic": -0.244,
+          "terzil_abstand": -6.346
+        },
+        {
+          "stichtag": "2024-05-06",
+          "n": 68,
+          "fehlend": 9,
+          "ic": 0.0434,
+          "terzil_abstand": -0.202
+        },
+        {
+          "stichtag": "2024-06-03",
+          "n": 69,
+          "fehlend": 8,
+          "ic": -0.032,
+          "terzil_abstand": -2.916
+        },
+        {
+          "stichtag": "2024-07-01",
+          "n": 69,
+          "fehlend": 8,
+          "ic": -0.1366,
+          "terzil_abstand": -7.073
+        },
+        {
+          "stichtag": "2024-07-29",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.0984,
+          "terzil_abstand": -0.226
+        },
+        {
+          "stichtag": "2024-08-26",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.2412,
+          "terzil_abstand": 3.93
+        },
+        {
+          "stichtag": "2024-09-23",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.2639,
+          "terzil_abstand": 2.187
+        },
+        {
+          "stichtag": "2024-10-21",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.3803,
+          "terzil_abstand": 20.298
+        },
+        {
+          "stichtag": "2024-11-18",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.4856,
+          "terzil_abstand": 19.243
+        },
+        {
+          "stichtag": "2024-12-16",
+          "n": 69,
+          "fehlend": 8,
+          "ic": -0.3367,
+          "terzil_abstand": -4.893
+        },
+        {
+          "stichtag": "2025-01-13",
+          "n": 69,
+          "fehlend": 8,
+          "ic": -0.1839,
+          "terzil_abstand": -10.202
+        },
+        {
+          "stichtag": "2025-02-10",
+          "n": 69,
+          "fehlend": 8,
+          "ic": -0.2424,
+          "terzil_abstand": -13.258
+        },
+        {
+          "stichtag": "2025-03-10",
+          "n": 69,
+          "fehlend": 8,
+          "ic": 0.125,
+          "terzil_abstand": 1.436
+        },
+        {
+          "stichtag": "2025-04-07",
+          "n": 70,
+          "fehlend": 7,
+          "ic": -0.3368,
+          "terzil_abstand": -10.756
+        },
+        {
+          "stichtag": "2025-05-05",
+          "n": 70,
+          "fehlend": 7,
+          "ic": 0.553,
+          "terzil_abstand": 19.7
+        },
+        {
+          "stichtag": "2025-06-02",
+          "n": 70,
+          "fehlend": 7,
+          "ic": 0.1065,
+          "terzil_abstand": 1.644
+        },
+        {
+          "stichtag": "2025-06-30",
+          "n": 71,
+          "fehlend": 6,
+          "ic": -0.0422,
+          "terzil_abstand": -3.906
+        },
+        {
+          "stichtag": "2025-07-28",
+          "n": 73,
+          "fehlend": 4,
+          "ic": -0.1792,
+          "terzil_abstand": -5.693
+        },
+        {
+          "stichtag": "2025-08-25",
+          "n": 73,
+          "fehlend": 4,
+          "ic": 0.1024,
+          "terzil_abstand": 6.367
+        },
+        {
+          "stichtag": "2025-09-22",
+          "n": 73,
+          "fehlend": 4,
+          "ic": 0.0507,
+          "terzil_abstand": -1.754
+        },
+        {
+          "stichtag": "2025-10-20",
+          "n": 74,
+          "fehlend": 3,
+          "ic": 0.254,
+          "terzil_abstand": 8.948
+        },
+        {
+          "stichtag": "2025-11-17",
+          "n": 75,
+          "fehlend": 2,
+          "ic": -0.2143,
+          "terzil_abstand": -8.086
+        },
+        {
+          "stichtag": "2025-12-15",
+          "n": 76,
+          "fehlend": 1,
+          "ic": -0.0378,
+          "terzil_abstand": -4.467
+        },
+        {
+          "stichtag": "2026-01-12",
+          "n": 76,
+          "fehlend": 1,
+          "ic": 0.1576,
+          "terzil_abstand": 10.784
+        },
+        {
+          "stichtag": "2026-02-09",
+          "n": 76,
+          "fehlend": 1,
+          "ic": -0.3173,
+          "terzil_abstand": -10.259
+        },
+        {
+          "stichtag": "2026-03-09",
+          "n": 76,
+          "fehlend": 1,
+          "ic": -0.2194,
+          "terzil_abstand": -4.294
+        },
+        {
+          "stichtag": "2026-04-06",
+          "n": 76,
+          "fehlend": 1,
+          "ic": 0.189,
+          "terzil_abstand": 23.677
+        },
+        {
+          "stichtag": "2026-05-04",
+          "n": 76,
+          "fehlend": 1,
+          "ic": 0.2662,
+          "terzil_abstand": 11.095
+        },
+        {
+          "stichtag": "2026-06-01",
+          "n": 76,
+          "fehlend": 1,
+          "ic": 0.0719,
+          "terzil_abstand": 3.382
+        },
+        {
+          "stichtag": "2026-06-29",
+          "n": 76,
+          "fehlend": 1,
+          "ic": -0.1279,
+          "terzil_abstand": -6.145
+        },
+        {
+          "stichtag": "2026-07-27",
+          "n": 76,
+          "fehlend": 1,
+          "ic": 0.0759,
+          "terzil_abstand": -0.178
+        },
+        {
+          "stichtag": "2026-08-24",
+          "n": 77,
+          "fehlend": 0,
+          "ic": -0.1766,
+          "terzil_abstand": -5.082
+        }
+      ]
+    }
+  },
+  "gegenprobe_bestanden": false,
+  "vorbehalt": "Suchraum aus heutigen Laeufen, delistete Firmen fehlen. Nur kursbasierte Merkmale, der Fundamentalteil des Scores ist hiermit nicht geprueft."
+}

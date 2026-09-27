@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-20T19:39:00+00:00",
+  "updated_at": "2026-09-27T20:18:10+00:00",
   "horizonte": [
     30,
     60,
@@ -806,7 +806,46 @@
         }
       ],
       "auswertung": {
-        "30": null,
+        "30": {
+          "stichtag": "2026-09-21",
+          "n": 14,
+          "fehlend": 0,
+          "ic": 0.011,
+          "terzil_abstand": 4.668,
+          "median_ueberrendite": 4.0,
+          "ic_komponenten": {
+            "dilution": {
+              "n": 14,
+              "ic": 0.248,
+              "terzil_abstand": 6.378
+            },
+            "fcf_trend": {
+              "n": 14,
+              "ic": 0.174,
+              "terzil_abstand": 6.842
+            },
+            "growth_acceleration": {
+              "n": 10,
+              "ic": -0.188,
+              "terzil_abstand": -5.848
+            },
+            "insider_cluster": {
+              "n": 14,
+              "ic": null,
+              "terzil_abstand": -4.668
+            },
+            "margin_trend": {
+              "n": 14,
+              "ic": 0.187,
+              "terzil_abstand": 2.775
+            },
+            "revision_momentum": {
+              "n": 14,
+              "ic": -0.333,
+              "terzil_abstand": -8.112
+            }
+          }
+        },
         "60": null,
         "90": null
       }
@@ -1982,7 +2021,46 @@
         }
       ],
       "auswertung": {
-        "30": null,
+        "30": {
+          "stichtag": "2026-09-22",
+          "n": 69,
+          "fehlend": 0,
+          "ic": 0.213,
+          "terzil_abstand": 7.847,
+          "median_ueberrendite": 4.7,
+          "ic_komponenten": {
+            "dilution": {
+              "n": 69,
+              "ic": 0.018,
+              "terzil_abstand": -0.35
+            },
+            "fcf_trend": {
+              "n": 66,
+              "ic": 0.135,
+              "terzil_abstand": 3.735
+            },
+            "growth_acceleration": {
+              "n": 58,
+              "ic": 0.157,
+              "terzil_abstand": 3.252
+            },
+            "insider_cluster": {
+              "n": 69,
+              "ic": null,
+              "terzil_abstand": -5.446
+            },
+            "margin_trend": {
+              "n": 67,
+              "ic": 0.102,
+              "terzil_abstand": 3.669
+            },
+            "revision_momentum": {
+              "n": 69,
+              "ic": 0.08,
+              "terzil_abstand": 4.087
+            }
+          }
+        },
         "60": null,
         "90": null
       }
@@ -5640,51 +5718,1309 @@
         "60": null,
         "90": null
       }
+    },
+    {
+      "datenstand": "2026-09-26",
+      "eingefroren_am": "2026-09-27",
+      "gewichte": {
+        "momentum_12_1": 20,
+        "revision_momentum": 15,
+        "growth_acceleration": 15,
+        "earnings_drift": 15,
+        "margin_trend": 10,
+        "fcf_trend": 10,
+        "insider_cluster": 10,
+        "dilution": 5
+      },
+      "fassung": "8k-e6fd97",
+      "kandidaten": [
+        {
+          "symbol": "MXL",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 73.9,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 93.84,
+          "komponenten": {
+            "momentum_12_1": 97.7,
+            "revision_momentum": 95.7,
+            "growth_acceleration": 75.0,
+            "margin_trend": 54.3,
+            "fcf_trend": 47.8,
+            "insider_cluster": 47.8,
+            "dilution": 54.3
+          }
+        },
+        {
+          "symbol": "SITM",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 71.6,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 662.27,
+          "komponenten": {
+            "momentum_12_1": 79.5,
+            "revision_momentum": 76.1,
+            "growth_acceleration": 91.7,
+            "earnings_drift": 84.1,
+            "margin_trend": 58.7,
+            "fcf_trend": 58.7,
+            "insider_cluster": 47.8,
+            "dilution": 28.3
+          }
+        },
+        {
+          "symbol": "KNSA",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 64.9,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 75.08,
+          "komponenten": {
+            "momentum_12_1": 88.6,
+            "revision_momentum": 32.6,
+            "earnings_drift": 97.7,
+            "margin_trend": 37.0,
+            "fcf_trend": 71.7,
+            "insider_cluster": 47.8,
+            "dilution": 45.7
+          }
+        },
+        {
+          "symbol": "OMDA",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 61.3,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 19.66,
+          "komponenten": {
+            "momentum_12_1": 15.9,
+            "revision_momentum": 76.1,
+            "growth_acceleration": 63.9,
+            "earnings_drift": 88.6,
+            "margin_trend": 84.8,
+            "fcf_trend": 84.8,
+            "insider_cluster": 47.8,
+            "dilution": 41.3
+          }
+        },
+        {
+          "symbol": "MGTX",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 59.8,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 10.91,
+          "komponenten": {
+            "momentum_12_1": 61.4,
+            "revision_momentum": 76.1,
+            "earnings_drift": 65.9,
+            "margin_trend": 97.8,
+            "fcf_trend": 15.2,
+            "insider_cluster": 47.8,
+            "dilution": 23.9
+          }
+        },
+        {
+          "symbol": "HNGE",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 59.1,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 95.57,
+          "komponenten": {
+            "momentum_12_1": 70.5,
+            "revision_momentum": 2.2,
+            "growth_acceleration": 69.4,
+            "earnings_drift": 61.4,
+            "margin_trend": 80.4,
+            "fcf_trend": 89.1,
+            "insider_cluster": 47.8,
+            "dilution": 67.4
+          }
+        },
+        {
+          "symbol": "KLIC",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 58.9,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 91.18,
+          "komponenten": {
+            "momentum_12_1": 84.1,
+            "revision_momentum": 58.7,
+            "growth_acceleration": 97.2,
+            "earnings_drift": 29.5,
+            "margin_trend": 28.3,
+            "fcf_trend": 23.9,
+            "insider_cluster": 47.8,
+            "dilution": 84.8
+          }
+        },
+        {
+          "symbol": "ARQT",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 53.5,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 26.92,
+          "komponenten": {
+            "momentum_12_1": 47.7,
+            "revision_momentum": 84.8,
+            "growth_acceleration": 52.8,
+            "earnings_drift": 47.7,
+            "margin_trend": 45.7,
+            "fcf_trend": 37.0,
+            "insider_cluster": 47.8,
+            "dilution": 63.0
+          }
+        },
+        {
+          "symbol": "ADPT",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 53.2,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 29.43,
+          "komponenten": {
+            "momentum_12_1": 75.0,
+            "revision_momentum": 58.7,
+            "growth_acceleration": 30.6,
+            "earnings_drift": 79.5,
+            "margin_trend": 2.2,
+            "fcf_trend": 54.3,
+            "insider_cluster": 47.8,
+            "dilution": 50.0
+          }
+        },
+        {
+          "symbol": "CAI",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 52.9,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 31.98,
+          "komponenten": {
+            "momentum_12_1": 11.4,
+            "revision_momentum": 58.7,
+            "growth_acceleration": 13.9,
+            "earnings_drift": 93.2,
+            "margin_trend": 71.7,
+            "fcf_trend": 97.8,
+            "insider_cluster": 47.8,
+            "dilution": 80.4
+          }
+        },
+        {
+          "symbol": "HNI",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 52.4,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 47.21,
+          "komponenten": {
+            "momentum_12_1": 20.5,
+            "revision_momentum": 67.4,
+            "growth_acceleration": 86.1,
+            "earnings_drift": 70.5,
+            "margin_trend": 50.0,
+            "fcf_trend": 47.8,
+            "insider_cluster": 47.8,
+            "dilution": 2.2
+          }
+        },
+        {
+          "symbol": "PL",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 52.3,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 17.43,
+          "komponenten": {
+            "momentum_12_1": 65.9,
+            "revision_momentum": 50.0,
+            "growth_acceleration": 80.6,
+            "earnings_drift": 20.5,
+            "margin_trend": 67.4,
+            "fcf_trend": 41.3,
+            "insider_cluster": 47.8,
+            "dilution": 15.2
+          }
+        },
+        {
+          "symbol": "DAVE",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 52.1,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 324.88,
+          "komponenten": {
+            "momentum_12_1": 56.8,
+            "revision_momentum": 95.7,
+            "growth_acceleration": 25.0,
+            "earnings_drift": 11.4,
+            "margin_trend": 32.6,
+            "fcf_trend": 80.4,
+            "insider_cluster": 47.8,
+            "dilution": 97.8
+          }
+        },
+        {
+          "symbol": "ASND",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 50.9,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 225.6,
+          "komponenten": {
+            "momentum_12_1": 38.6,
+            "revision_momentum": 15.2,
+            "earnings_drift": 34.1,
+            "margin_trend": 89.1,
+            "fcf_trend": 76.1,
+            "insider_cluster": 97.8,
+            "dilution": 37.0
+          }
+        },
+        {
+          "symbol": "TFX",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 50.3,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 122.07,
+          "komponenten": {
+            "momentum_12_1": 25.0,
+            "revision_momentum": 89.1,
+            "growth_acceleration": 41.7,
+            "earnings_drift": 38.6,
+            "margin_trend": 41.3,
+            "fcf_trend": 63.0,
+            "insider_cluster": 47.8,
+            "dilution": 93.5
+          }
+        },
+        {
+          "symbol": "LQDA",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 50.2,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 68.43,
+          "komponenten": {
+            "momentum_12_1": 93.2,
+            "revision_momentum": 6.5,
+            "earnings_drift": 6.8,
+            "margin_trend": 76.1,
+            "fcf_trend": 67.4,
+            "insider_cluster": 47.8,
+            "dilution": 58.7
+          }
+        },
+        {
+          "symbol": "BLLN",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 41.6,
+          "coverage": 80.0,
+          "reliable": true,
+          "preis_lauf": 123.08,
+          "komponenten": {
+            "revision_momentum": 37.0,
+            "growth_acceleration": 19.4,
+            "earnings_drift": 2.3,
+            "margin_trend": 93.5,
+            "fcf_trend": 93.5,
+            "insider_cluster": 47.8,
+            "dilution": 19.6
+          }
+        },
+        {
+          "symbol": "TGTX",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 37.7,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 57.43,
+          "komponenten": {
+            "momentum_12_1": 52.3,
+            "revision_momentum": 10.9,
+            "growth_acceleration": 58.3,
+            "earnings_drift": 25.0,
+            "margin_trend": 6.5,
+            "fcf_trend": 32.6,
+            "insider_cluster": 47.8,
+            "dilution": 89.1
+          }
+        },
+        {
+          "symbol": "MIRM",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 36.9,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 89.7,
+          "komponenten": {
+            "momentum_12_1": 43.2,
+            "revision_momentum": 41.3,
+            "growth_acceleration": 36.1,
+            "earnings_drift": 15.9,
+            "margin_trend": 63.0,
+            "fcf_trend": 28.3,
+            "insider_cluster": 47.8,
+            "dilution": 6.5
+          }
+        },
+        {
+          "symbol": "STAA",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 32.2,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 20.51,
+          "komponenten": {
+            "momentum_12_1": 6.8,
+            "revision_momentum": 28.3,
+            "growth_acceleration": 47.2,
+            "earnings_drift": 52.3,
+            "margin_trend": 10.9,
+            "fcf_trend": 19.6,
+            "insider_cluster": 47.8,
+            "dilution": 76.1
+          }
+        },
+        {
+          "symbol": "TARS",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 30.7,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 75.69,
+          "komponenten": {
+            "momentum_12_1": 29.5,
+            "revision_momentum": 21.7,
+            "growth_acceleration": 8.3,
+            "earnings_drift": 75.0,
+            "margin_trend": 23.9,
+            "fcf_trend": 2.2,
+            "insider_cluster": 47.8,
+            "dilution": 32.6
+          }
+        },
+        {
+          "symbol": "BCRX",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 30.6,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 8.59,
+          "komponenten": {
+            "momentum_12_1": 34.1,
+            "revision_momentum": 45.7,
+            "growth_acceleration": 2.8,
+            "earnings_drift": 56.8,
+            "margin_trend": 15.2,
+            "fcf_trend": 10.9,
+            "insider_cluster": 47.8,
+            "dilution": 10.9
+          }
+        },
+        {
+          "symbol": "LEGN",
+          "korb": "klein",
+          "benchmark_symbol": "IWO",
+          "score": 24.9,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 19.11,
+          "komponenten": {
+            "momentum_12_1": 2.3,
+            "revision_momentum": 21.7,
+            "earnings_drift": 43.2,
+            "margin_trend": 19.6,
+            "fcf_trend": 6.5,
+            "insider_cluster": 47.8,
+            "dilution": 71.7
+          }
+        },
+        {
+          "symbol": "AMD",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 71.9,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 630.63,
+          "komponenten": {
+            "momentum_12_1": 83.8,
+            "revision_momentum": 79.2,
+            "growth_acceleration": 85.0,
+            "earnings_drift": 56.1,
+            "margin_trend": 72.1,
+            "fcf_trend": 45.6,
+            "insider_cluster": 50.0,
+            "dilution": 62.5
+          }
+        },
+        {
+          "symbol": "PLTR",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 69.3,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 189.67,
+          "komponenten": {
+            "momentum_12_1": 27.9,
+            "revision_momentum": 84.7,
+            "growth_acceleration": 78.3,
+            "earnings_drift": 98.5,
+            "margin_trend": 66.2,
+            "fcf_trend": 80.9,
+            "insider_cluster": 50.0,
+            "dilution": 56.9
+          }
+        },
+        {
+          "symbol": "NVDA",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 69.0,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 225.07,
+          "komponenten": {
+            "momentum_12_1": 42.6,
+            "revision_momentum": 98.6,
+            "growth_acceleration": 98.3,
+            "earnings_drift": 74.2,
+            "margin_trend": 57.4,
+            "fcf_trend": 30.9,
+            "insider_cluster": 50.0,
+            "dilution": 81.9
+          }
+        },
+        {
+          "symbol": "SNDK",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 68.0,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 1777.8,
+          "komponenten": {
+            "momentum_12_1": 98.5,
+            "revision_momentum": 34.7,
+            "earnings_drift": 22.7,
+            "margin_trend": 95.6,
+            "fcf_trend": 98.5,
+            "insider_cluster": 50.0,
+            "dilution": 65.3
+          }
+        },
+        {
+          "symbol": "LITE",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 65.5,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 941.65,
+          "komponenten": {
+            "momentum_12_1": 95.6,
+            "revision_momentum": 73.6,
+            "growth_acceleration": 95.0,
+            "earnings_drift": 89.4,
+            "margin_trend": 4.4,
+            "fcf_trend": 4.4,
+            "insider_cluster": 50.0,
+            "dilution": 4.2
+          }
+        },
+        {
+          "symbol": "SNOW",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 64.4,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 335.94,
+          "komponenten": {
+            "momentum_12_1": 54.4,
+            "revision_momentum": 93.1,
+            "growth_acceleration": 48.3,
+            "earnings_drift": 77.3,
+            "margin_trend": 63.2,
+            "fcf_trend": 69.1,
+            "insider_cluster": 50.0,
+            "dilution": 20.8
+          }
+        },
+        {
+          "symbol": "STX",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 62.2,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 916.83,
+          "komponenten": {
+            "momentum_12_1": 86.8,
+            "revision_momentum": 70.8,
+            "growth_acceleration": 71.7,
+            "earnings_drift": 31.8,
+            "margin_trend": 92.6,
+            "fcf_trend": 23.5,
+            "insider_cluster": 50.0,
+            "dilution": 18.1
+          }
+        },
+        {
+          "symbol": "ALAB",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 61.6,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 364.62,
+          "komponenten": {
+            "momentum_12_1": 60.3,
+            "revision_momentum": 76.4,
+            "growth_acceleration": 81.7,
+            "earnings_drift": 50.0,
+            "margin_trend": 19.1,
+            "fcf_trend": 89.7,
+            "insider_cluster": 50.0,
+            "dilution": 26.4
+          }
+        },
+        {
+          "symbol": "DDOG",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 61.1,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 268.13,
+          "komponenten": {
+            "momentum_12_1": 69.1,
+            "revision_momentum": 95.8,
+            "growth_acceleration": 68.3,
+            "earnings_drift": 16.7,
+            "margin_trend": 45.6,
+            "fcf_trend": 75.0,
+            "insider_cluster": 50.0,
+            "dilution": 40.3
+          }
+        },
+        {
+          "symbol": "NET",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 60.6,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 349.02,
+          "komponenten": {
+            "momentum_12_1": 51.5,
+            "revision_momentum": 90.3,
+            "growth_acceleration": 55.0,
+            "earnings_drift": 62.1,
+            "margin_trend": 25.0,
+            "fcf_trend": 83.8,
+            "insider_cluster": 50.0,
+            "dilution": 45.8
+          }
+        },
+        {
+          "symbol": "ANET",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 60.2,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 206.55,
+          "komponenten": {
+            "momentum_12_1": 48.5,
+            "revision_momentum": 87.5,
+            "growth_acceleration": 65.0,
+            "earnings_drift": 68.2,
+            "margin_trend": 30.9,
+            "fcf_trend": 48.5,
+            "insider_cluster": 50.0,
+            "dilution": 68.1
+          }
+        },
+        {
+          "symbol": "NTRA",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 58.2,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 412.56,
+          "komponenten": {
+            "momentum_12_1": 72.1,
+            "revision_momentum": 45.8,
+            "growth_acceleration": 31.7,
+            "earnings_drift": 92.4,
+            "margin_trend": 89.7,
+            "fcf_trend": 23.5,
+            "insider_cluster": 50.0,
+            "dilution": 23.6
+          }
+        },
+        {
+          "symbol": "ADI",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 57.2,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 393.6,
+          "komponenten": {
+            "momentum_12_1": 57.4,
+            "revision_momentum": 81.9,
+            "growth_acceleration": 58.3,
+            "earnings_drift": 47.0,
+            "margin_trend": 22.1,
+            "fcf_trend": 54.4,
+            "insider_cluster": 50.0,
+            "dilution": 84.7
+          }
+        },
+        {
+          "symbol": "SKHY",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 53.8,
+          "coverage": 65.0,
+          "reliable": true,
+          "preis_lauf": 191.56,
+          "komponenten": {
+            "revision_momentum": 27.8,
+            "earnings_drift": 25.8,
+            "margin_trend": 98.5,
+            "fcf_trend": 72.1,
+            "insider_cluster": 50.0,
+            "dilution": 90.3
+          }
+        },
+        {
+          "symbol": "DASH",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 53.3,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 193.36,
+          "komponenten": {
+            "momentum_12_1": 22.1,
+            "revision_momentum": 51.4,
+            "growth_acceleration": 61.7,
+            "earnings_drift": 65.2,
+            "margin_trend": 54.4,
+            "fcf_trend": 86.8,
+            "insider_cluster": 50.0,
+            "dilution": 54.2
+          }
+        },
+        {
+          "symbol": "RBRK",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 52.9,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 109.55,
+          "komponenten": {
+            "momentum_12_1": 45.6,
+            "revision_momentum": 59.7,
+            "growth_acceleration": 35.0,
+            "earnings_drift": 40.9,
+            "margin_trend": 77.9,
+            "fcf_trend": 95.6,
+            "insider_cluster": 50.0,
+            "dilution": 15.3
+          }
+        },
+        {
+          "symbol": "SHOP",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 52.5,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 142.25,
+          "komponenten": {
+            "momentum_12_1": 33.8,
+            "revision_momentum": 63.9,
+            "growth_acceleration": 38.3,
+            "earnings_drift": 95.5,
+            "margin_trend": 13.2,
+            "fcf_trend": 57.4,
+            "insider_cluster": 50.0,
+            "dilution": 76.4
+          }
+        },
+        {
+          "symbol": "AVGO",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 50.1,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 352.81,
+          "komponenten": {
+            "momentum_12_1": 36.8,
+            "revision_momentum": 6.9,
+            "growth_acceleration": 91.7,
+            "earnings_drift": 37.9,
+            "margin_trend": 83.8,
+            "fcf_trend": 63.2,
+            "insider_cluster": 50.0,
+            "dilution": 51.4
+          }
+        },
+        {
+          "symbol": "WDC",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 48.4,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 456.81,
+          "komponenten": {
+            "momentum_12_1": 89.7,
+            "revision_momentum": 54.2,
+            "growth_acceleration": 28.3,
+            "earnings_drift": 13.6,
+            "margin_trend": 80.9,
+            "fcf_trend": 16.2,
+            "insider_cluster": 50.0,
+            "dilution": 29.2
+          }
+        },
+        {
+          "symbol": "MU",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 48.0,
+          "coverage": 70.0,
+          "reliable": true,
+          "preis_lauf": 1082.28,
+          "komponenten": {
+            "momentum_12_1": 92.6,
+            "revision_momentum": 19.4,
+            "margin_trend": 16.2,
+            "fcf_trend": 27.9,
+            "insider_cluster": 50.0,
+            "dilution": 59.7
+          }
+        },
+        {
+          "symbol": "CIEN",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 47.3,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 356.91,
+          "komponenten": {
+            "momentum_12_1": 80.9,
+            "revision_momentum": 48.6,
+            "growth_acceleration": 25.0,
+            "earnings_drift": 28.8,
+            "margin_trend": 33.8,
+            "fcf_trend": 41.2,
+            "insider_cluster": 50.0,
+            "dilution": 70.8
+          }
+        },
+        {
+          "symbol": "TER",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 47.0,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 398.38,
+          "komponenten": {
+            "momentum_12_1": 75.0,
+            "revision_momentum": 63.9,
+            "growth_acceleration": 5.0,
+            "earnings_drift": 34.8,
+            "margin_trend": 36.8,
+            "fcf_trend": 36.8,
+            "insider_cluster": 50.0,
+            "dilution": 87.5
+          }
+        },
+        {
+          "symbol": "SNPS",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 46.3,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 425.76,
+          "komponenten": {
+            "momentum_12_1": 25.0,
+            "revision_momentum": 56.9,
+            "growth_acceleration": 41.7,
+            "earnings_drift": 86.4,
+            "margin_trend": 39.7,
+            "fcf_trend": 33.8,
+            "insider_cluster": 50.0,
+            "dilution": 31.9
+          }
+        },
+        {
+          "symbol": "LLY",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 45.5,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 1183.46,
+          "komponenten": {
+            "momentum_12_1": 63.2,
+            "revision_momentum": 40.3,
+            "growth_acceleration": 11.7,
+            "earnings_drift": 71.2,
+            "margin_trend": 10.3,
+            "fcf_trend": 41.2,
+            "insider_cluster": 50.0,
+            "dilution": 93.1
+          }
+        },
+        {
+          "symbol": "ONC",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 44.2,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 360.85,
+          "komponenten": {
+            "momentum_12_1": 39.7,
+            "revision_momentum": 37.5,
+            "growth_acceleration": 18.3,
+            "earnings_drift": 59.1,
+            "margin_trend": 86.8,
+            "fcf_trend": 10.3,
+            "insider_cluster": 50.0,
+            "dilution": 98.6
+          }
+        },
+        {
+          "symbol": "GH",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 43.0,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 177.25,
+          "komponenten": {
+            "momentum_12_1": 77.9,
+            "revision_momentum": 15.3,
+            "growth_acceleration": 21.7,
+            "earnings_drift": 83.3,
+            "margin_trend": 42.6,
+            "fcf_trend": 1.5,
+            "insider_cluster": 50.0,
+            "dilution": 12.5
+          }
+        },
+        {
+          "symbol": "CRDO",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 42.1,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 210.97,
+          "komponenten": {
+            "momentum_12_1": 66.2,
+            "revision_momentum": 43.1,
+            "growth_acceleration": 1.7,
+            "earnings_drift": 4.5,
+            "margin_trend": 75.0,
+            "fcf_trend": 92.6,
+            "insider_cluster": 50.0,
+            "dilution": 9.7
+          }
+        },
+        {
+          "symbol": "MELI",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 38.1,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 1752.61,
+          "komponenten": {
+            "momentum_12_1": 16.2,
+            "revision_momentum": 12.5,
+            "growth_acceleration": 51.7,
+            "earnings_drift": 43.9,
+            "margin_trend": 60.3,
+            "fcf_trend": 51.5,
+            "insider_cluster": 50.0,
+            "dilution": 73.6
+          }
+        },
+        {
+          "symbol": "SE",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 37.1,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 99.55,
+          "komponenten": {
+            "momentum_12_1": 7.4,
+            "revision_momentum": 27.8,
+            "earnings_drift": 80.3,
+            "margin_trend": 69.1,
+            "fcf_trend": 13.2,
+            "insider_cluster": 50.0,
+            "dilution": 37.5
+          }
+        },
+        {
+          "symbol": "GPN",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 35.7,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 86.49,
+          "komponenten": {
+            "momentum_12_1": 30.9,
+            "revision_momentum": 1.4,
+            "growth_acceleration": 75.0,
+            "earnings_drift": 53.0,
+            "margin_trend": 1.5,
+            "fcf_trend": 60.3,
+            "insider_cluster": 50.0,
+            "dilution": 6.9
+          }
+        },
+        {
+          "symbol": "RDDT",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 31.4,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 149.84,
+          "komponenten": {
+            "momentum_12_1": 10.3,
+            "revision_momentum": 68.1,
+            "growth_acceleration": 8.3,
+            "earnings_drift": 7.6,
+            "margin_trend": 48.5,
+            "fcf_trend": 66.2,
+            "insider_cluster": 50.0,
+            "dilution": 43.1
+          }
+        },
+        {
+          "symbol": "AXON",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 27.5,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 430.11,
+          "komponenten": {
+            "momentum_12_1": 19.1,
+            "revision_momentum": 31.9,
+            "growth_acceleration": 45.0,
+            "earnings_drift": 19.7,
+            "margin_trend": 27.9,
+            "fcf_trend": 19.1,
+            "insider_cluster": 50.0,
+            "dilution": 34.7
+          }
+        },
+        {
+          "symbol": "PROSY",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 25.9,
+          "coverage": 50.0,
+          "reliable": false,
+          "preis_lauf": 8.26,
+          "komponenten": {
+            "momentum_12_1": 13.2,
+            "revision_momentum": 19.4,
+            "insider_cluster": 50.0,
+            "dilution": 95.8
+          }
+        },
+        {
+          "symbol": "APP",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 24.1,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 310.75,
+          "komponenten": {
+            "momentum_12_1": 1.5,
+            "revision_momentum": 4.2,
+            "growth_acceleration": 15.0,
+            "earnings_drift": 10.6,
+            "margin_trend": 51.5,
+            "fcf_trend": 77.9,
+            "insider_cluster": 50.0,
+            "dilution": 79.2
+          }
+        },
+        {
+          "symbol": "ALNY",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 21.9,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 255.96,
+          "komponenten": {
+            "momentum_12_1": 4.4,
+            "revision_momentum": 9.7,
+            "growth_acceleration": 88.3,
+            "earnings_drift": 1.5,
+            "margin_trend": 7.4,
+            "fcf_trend": 7.4,
+            "insider_cluster": 50.0,
+            "dilution": 48.6
+          }
+        },
+        {
+          "symbol": "KXIAY",
+          "korb": "gross",
+          "benchmark_symbol": "^GSPC",
+          "score": 18.1,
+          "coverage": 30.0,
+          "reliable": false,
+          "preis_lauf": 35.75,
+          "komponenten": {
+            "revision_momentum": 23.6,
+            "insider_cluster": 50.0,
+            "dilution": 1.4
+          }
+        },
+        {
+          "symbol": "GOOGL",
+          "korb": "frueh",
+          "benchmark_symbol": "IWO",
+          "score": 64.6,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 343.92,
+          "komponenten": {
+            "momentum_12_1": 83.3,
+            "revision_momentum": 83.3,
+            "growth_acceleration": 43.8,
+            "margin_trend": 83.3,
+            "fcf_trend": 61.1,
+            "insider_cluster": 44.4,
+            "dilution": 5.6
+          }
+        },
+        {
+          "symbol": "KO",
+          "korb": "frueh",
+          "benchmark_symbol": "IWO",
+          "score": 60.1,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 87.81,
+          "komponenten": {
+            "momentum_12_1": 61.1,
+            "revision_momentum": 94.4,
+            "earnings_drift": 70.0,
+            "margin_trend": 61.1,
+            "fcf_trend": 16.7,
+            "insider_cluster": 44.4,
+            "dilution": 38.9
+          }
+        },
+        {
+          "symbol": "NVR",
+          "korb": "frueh",
+          "benchmark_symbol": "IWO",
+          "score": 57.7,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 6297.6,
+          "komponenten": {
+            "momentum_12_1": 5.6,
+            "revision_momentum": 72.2,
+            "growth_acceleration": 93.8,
+            "margin_trend": 27.8,
+            "fcf_trend": 72.2,
+            "insider_cluster": 94.4,
+            "dilution": 72.2
+          }
+        },
+        {
+          "symbol": "DAL",
+          "korb": "frueh",
+          "benchmark_symbol": "IWO",
+          "score": 52.2,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 84.94,
+          "komponenten": {
+            "momentum_12_1": 94.4,
+            "revision_momentum": 16.7,
+            "growth_acceleration": 81.2,
+            "margin_trend": 16.7,
+            "fcf_trend": 38.9,
+            "insider_cluster": 44.4,
+            "dilution": 16.7
+          }
+        },
+        {
+          "symbol": "LLYVA",
+          "korb": "frueh",
+          "benchmark_symbol": "IWO",
+          "score": 51.1,
+          "coverage": 85.0,
+          "reliable": true,
+          "preis_lauf": 96.32,
+          "komponenten": {
+            "momentum_12_1": 38.9,
+            "revision_momentum": 55.6,
+            "growth_acceleration": 6.2,
+            "margin_trend": 94.4,
+            "fcf_trend": 94.4,
+            "insider_cluster": 44.4,
+            "dilution": 61.1
+          }
+        },
+        {
+          "symbol": "KR",
+          "korb": "frueh",
+          "benchmark_symbol": "IWO",
+          "score": 49.7,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 58.74,
+          "komponenten": {
+            "momentum_12_1": 16.7,
+            "revision_momentum": 55.6,
+            "growth_acceleration": 68.8,
+            "earnings_drift": 90.0,
+            "margin_trend": 50.0,
+            "fcf_trend": 5.6,
+            "insider_cluster": 44.4,
+            "dilution": 83.3
+          }
+        },
+        {
+          "symbol": "AAPL",
+          "korb": "frueh",
+          "benchmark_symbol": "IWO",
+          "score": 42.5,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 341.07,
+          "komponenten": {
+            "momentum_12_1": 50.0,
+            "revision_momentum": 27.8,
+            "growth_acceleration": 31.2,
+            "earnings_drift": 30.0,
+            "margin_trend": 72.2,
+            "fcf_trend": 50.0,
+            "insider_cluster": 44.4,
+            "dilution": 50.0
+          }
+        },
+        {
+          "symbol": "DVA",
+          "korb": "frueh",
+          "benchmark_symbol": "IWO",
+          "score": 40.4,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 178.47,
+          "komponenten": {
+            "momentum_12_1": 72.2,
+            "revision_momentum": 38.9,
+            "growth_acceleration": 18.8,
+            "earnings_drift": 10.0,
+            "margin_trend": 38.9,
+            "fcf_trend": 27.8,
+            "insider_cluster": 44.4,
+            "dilution": 94.4
+          }
+        },
+        {
+          "symbol": "KHC",
+          "korb": "frueh",
+          "benchmark_symbol": "IWO",
+          "score": 37.0,
+          "coverage": 100.0,
+          "reliable": true,
+          "preis_lauf": 23.63,
+          "komponenten": {
+            "momentum_12_1": 27.8,
+            "revision_momentum": 5.6,
+            "growth_acceleration": 56.2,
+            "earnings_drift": 50.0,
+            "margin_trend": 5.6,
+            "fcf_trend": 83.3,
+            "insider_cluster": 44.4,
+            "dilution": 27.8
+          }
+        }
+      ],
+      "auswertung": {
+        "30": null,
+        "60": null,
+        "90": null
+      }
     }
   ],
   "zusammenfassung": {
     "30": {
-      "laeufe": 1,
-      "wochen": 1,
-      "ic_mittel": 0.099,
-      "ic_median": 0.099,
+      "laeufe": 0,
+      "wochen": 0,
+      "ic_mittel": null,
+      "ic_median": null,
       "t": null,
-      "positive_wochen": 1,
-      "terzil_abstand_mittel": 0.69,
+      "positive_wochen": 0,
+      "terzil_abstand_mittel": null,
       "belastbar": false,
-      "wochen_fehlend": 11,
-      "komponenten": {
-        "dilution": {
-          "wochen": 1,
-          "ic_mittel": -0.059,
-          "t": null
-        },
-        "fcf_trend": {
-          "wochen": 1,
-          "ic_mittel": 0.259,
-          "t": null
-        },
-        "growth_acceleration": {
-          "wochen": 1,
-          "ic_mittel": -0.047,
-          "t": null
-        },
-        "insider_cluster": {
-          "wochen": 1,
-          "ic_mittel": -0.113,
-          "t": null
-        },
-        "margin_trend": {
-          "wochen": 1,
-          "ic_mittel": 0.194,
-          "t": null
-        },
-        "revision_momentum": {
-          "wochen": 1,
-          "ic_mittel": -0.11,
-          "t": null
-        }
-      }
+      "wochen_fehlend": 12,
+      "fassung": "8k-e6fd97",
+      "laeufe_andere_fassung": 5,
+      "komponenten": {}
     },
     "60": {
       "laeufe": 0,
@@ -5696,6 +7032,8 @@
       "terzil_abstand_mittel": null,
       "belastbar": false,
       "wochen_fehlend": 12,
+      "fassung": "8k-e6fd97",
+      "laeufe_andere_fassung": 5,
       "komponenten": {}
     },
     "90": {
@@ -5708,10 +7046,19 @@
       "terzil_abstand_mittel": null,
       "belastbar": false,
       "wochen_fehlend": 12,
+      "fassung": "8k-e6fd97",
+      "laeufe_andere_fassung": 5,
       "komponenten": {}
     }
   },
   "hinweise": [
-    "Lauf 2026-09-19 eingefroren, 69 Kandidaten."
-  ]
+    "Lauf 2026-09-26 eingefroren, 68 Kandidaten."
+  ],
+  "fassungen": {
+    "aktuell": "8k-e6fd97",
+    "laeufe_je_fassung": {
+      "6k-657bab": 5,
+      "8k-e6fd97": 2
+    }
+  }
 }

@@ -1,6 +1,6 @@
 {
-  "name": "Sparplan",
-  "short_name": "Sparplan",
+  "name": "Bullnet",
+  "short_name": "Bullnet",
   "description": "Kaufideen je Größe, dein Depot mit aktuellen Kursen und das Archiv aller Vorschläge.",
   "start_url": "./",
   "scope": "./",
@@ -9,7 +9,23 @@
   "background_color": "#0e1218",
   "theme_color": "#0e1218",
   "icons": [
-    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

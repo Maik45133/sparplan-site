@@ -1,4 +1,4 @@
-/* Sparplan. Drei Bereiche: Kaufen, Depot, Archiv.
+/* Bullnet. Drei Bereiche: Kaufen, Depot, Archiv.
    Liest data/app.json (öffentlich, sonntags neu) und data/depot_live.enc
    (verschlüsselt, entsperrt nur auf deinem Gerät). Kein Server, kein Tracking. */
 'use strict';
@@ -417,7 +417,7 @@ function position(sym) {
 /* ───────── Ablauf ───────── */
 function render() {
   if (!APP) {
-    view.innerHTML = `<div class="display">Sparplan</div><div class="card"><div class="status">Daten nicht erreichbar<small>Kein Netz oder data/app.json fehlt noch. Der Sonntagslauf legt sie an.</small></div><p style="margin-top:12px"><button class="btn" id="neu">Erneut laden</button></p></div>`;
+    view.innerHTML = `<div class="display">Bullnet</div><div class="card"><div class="status">Daten nicht erreichbar<small>Kein Netz oder data/app.json fehlt noch. Der Sonntagslauf legt sie an.</small></div><p style="margin-top:12px"><button class="btn" id="neu">Erneut laden</button></p></div>`;
     $('#neu').onclick = start; return;
   }
   view.innerHTML = tab === 'kaufen' ? kaufen() : tab === 'depot' ? depot() : archiv();

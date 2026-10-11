@@ -1,6 +1,6 @@
 {
-  "name": "Bullnet",
-  "short_name": "Bullnet",
+  "name": "AI-Trading",
+  "short_name": "AI-Trading",
   "description": "Kaufideen je Größe, dein Depot mit aktuellen Kursen und das Archiv aller Vorschläge.",
   "start_url": "./",
   "scope": "./",

@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-11T12:14:53+00:00",
+  "updated_at": "2026-10-11T21:02:21+00:00",
   "einsatz_eur": 1000.0,
   "positionen": [
     {
@@ -170,10 +170,7 @@
     }
   },
   "hinweise": [
-    "SNDK aufgenommen aus Korb gross, Score 84.8.",
-    "GOOGL uebersprungen, 4300.8 Mrd ueber der Kaufgrenze (1000 Mrd), Korb frueh.",
-    "MXL am 2026-10-08 durch den Volatilitaetsstop geschlossen, Kurs 93.70 unter Stop 97.46.",
-    "SITM am 2026-10-08 durch den Volatilitaetsstop geschlossen, Kurs 645.06 unter Stop 657.46."
+    "GOOGL uebersprungen, 4300.8 Mrd ueber der Kaufgrenze (1000 Mrd), Korb frueh."
   ],
   "benchmark_namen": {
     "IWO": "Russell 2000 Growth",

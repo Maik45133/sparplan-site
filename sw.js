@@ -1,7 +1,7 @@
 /* Netz zuerst, Cache nur als Rettung ohne Empfang.
    So zeigt das iPhone nach jedem Push sofort den neuen Stand, ohne dass hier
    jemand eine Versionsnummer hochzählen muss. */
-const V = 'sparplan-v20';
+const V = 'sparplan-v22';
 const HUELLE = ['./', './index.html', './assets/style.css', './assets/app.js', './manifest.webmanifest', './assets/icon-192.png'];
 
 self.addEventListener('install', e => {

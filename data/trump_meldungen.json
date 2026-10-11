@@ -1,0 +1,9 @@
+{
+ "hinweis": "Pflichtmeldungen (OGE Form 278-T) über Wertpapiergeschäfte in Trumps Konten. Die Konten werden von Verwaltern geführt, es sind tausende Einzelgeschäfte pro Quartal, gemeldet mit bis zu 45 Tagen Verzug. Das ist kein Kauftipp von Trump.",
+ "meldungen": [
+  {"datum": "2026-05-15", "zeitraum": "Q1 2026", "geschaefte": 3642, "eingepflegt": true, "kurz": "Viele große Techwerte gekauft (NVIDIA, Broadcom, Apple, AMD, Micron), Amazon, Meta und Microsoft teils verkauft.", "quelle": "https://www.euronews.com/business/2026/05/15/trump-discloses-stock-trades-revealing-massive-gains-in-2026-with-bets-on-big-tech"},
+  {"datum": "2026-06-25", "zeitraum": "Q2 2026, Teil 1", "geschaefte": 2525, "eingepflegt": false, "kurz": "Einzeltitel nicht ausgewertet.", "quelle": "https://tracefour.com/trackers/trump-portfolio"},
+  {"datum": "2026-08-12", "zeitraum": "Q2 2026, Teil 2", "geschaefte": 1051, "eingepflegt": false, "kurz": "Vor allem Umschichtungen in ETFs (SPY, XLK, XLI gekauft, VIG verkauft) und Kommunalanleihen.", "quelle": "https://tracefour.com/trackers/trump-portfolio"},
+  {"datum": "2026-09-22", "zeitraum": "Juli 2026", "geschaefte": 1156, "eingepflegt": false, "kurz": "716 Verkäufe, 440 Käufe, Einzeltitel nicht ausgewertet.", "quelle": "https://open-cabinet.org/officials/trump-donald-j"}
+ ]
+}

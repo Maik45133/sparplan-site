@@ -117,3 +117,9 @@ svg.chart{width:100%;height:auto;display:block;margin-top:12px}
 .linkzeile{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--sc-high);font-size:15px}
 .linkzeile:first-of-type{border-top:0}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.mehr{display:block;width:100%;margin-top:8px;border:0;background:var(--sc-low);color:var(--primary);font:inherit;font-size:15px;font-weight:700;padding:13px;border-radius:20px;cursor:pointer;transition:border-radius .3s var(--spring)}
+.mehr:active{border-radius:12px}.mehr:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
+.rg{display:inline-block;min-width:20px;margin-right:6px;color:var(--on-var);font-size:13px;font-weight:650}
+.zl{display:inline-block;margin-left:6px;font-size:12px;font-weight:700;vertical-align:middle}
+.box h3+.stats{margin-top:4px}
+.box .st{background:var(--sc-high)}

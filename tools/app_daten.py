@@ -8,7 +8,7 @@ Kein Sprachmodell, also keine Claude-Credits.
     python3 tools/app_daten.py --gekauft    nur Gekauft-Issues einlesen (schnell)
     python3 tools/app_daten.py --ohne-depot ohne verschluesseltes Depot
 
-Oeffentlich (app.json): Top 3 je Groesse mit Gruenden, Indizes, Archiv in Euro,
+Oeffentlich (app.json): Top 10 je Groesse mit Gruenden und Kurzprofil, Trump-Meldungen, Indizes, Archiv in Euro,
 virtuelles Depot, Gekauft-Liste.
 Verschluesselt (depot_live.enc): dein Bestand mit aktuellen Kursen. Das Passwort
 kommt aus dem GitHub-Secret DEPOT_PASSWORT oder wird am Mac abgefragt. Es steht
@@ -61,7 +61,7 @@ _YC: dict = {}
 
 def yahoo(symbol: str, tage: int = 400) -> dict | None:
     """Tagesschlusskurse plus Name, Waehrung und 52-Wochen-Hoch."""
-    if symbol in _YC:
+    if symbol in _YC and (_YC[symbol] is None or _YC[symbol].get("_tage", 0) >= tage):
         return _YC[symbol]
     p2 = int(time.time())
     p1 = p2 - tage * 86400
@@ -91,6 +91,8 @@ def yahoo(symbol: str, tage: int = 400) -> dict | None:
     if out and not out.get("hoch52"):
         letzte = [out["reihe"][d] for d in sorted(out["reihe"])[-252:]]
         out["hoch52"] = max(letzte) if letzte else None
+    if out:
+        out["_tage"] = tage
     _YC[symbol] = out
     time.sleep(0.3)
     return out
@@ -188,10 +190,15 @@ def spread_pct(isin: str | None) -> float | None:
     return None
 
 
+# Laender, deren ISINs bei US-Aktien fast immer Hinterlegungsscheine sind
+# (CDR in Kanada, CEDEAR in Argentinien, BDR in Brasilien, Mexiko)
+ZERTIFIKAT_LAENDER = ("CA", "AR", "BR", "MX")
+
+
 def isin_finden(isin: str | None, name: str) -> str | None:
     """Das Screening liefert manchmal die kanadische Hinterlegungsschein-ISIN
     (CA...) oder gar keine. Die taugt nicht fuer die Suche in Trade Republic."""
-    if isin and len(isin) == 12 and not isin.startswith("CA"):
+    if isin and len(isin) == 12 and not isin.startswith(ZERTIFIKAT_LAENDER):
         return isin
     erstes = (name.split() or [""])[0].lower()
     for frage in dict.fromkeys([name, name.replace(" and ", " & "), name.split()[0] if name.split() else name]):
@@ -209,9 +216,9 @@ def isin_finden(isin: str | None, name: str) -> str | None:
             if k.startswith("US"):
                 return k
         for k, _ in kand:
-            if not k.startswith("CA"):
+            if not k.startswith(ZERTIFIKAT_LAENDER):
                 return k
-    return isin if isin and len(isin) == 12 else None
+    return isin if isin and len(isin) == 12 and not isin.startswith(ZERTIFIKAT_LAENDER) else None
 
 
 # ── Namen und Branchen ──────────────────────────────────────────────────
@@ -343,6 +350,58 @@ def brauchbar(d: dict) -> bool:
     return bool(d.get("scorecard", {}).get("reliable")) and not d.get("exclusion_reason")
 
 
+# ── Kurzprofile: was die Firma macht ────────────────────────────────────
+
+
+def profile_laden() -> dict:
+    try:
+        return json.loads((DATA / "profile.json").read_text(encoding="utf-8")).get("titel", {})
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+PROFILE = profile_laden()
+
+
+_INFO: dict = {}
+
+
+def info(sym: str) -> dict:
+    """Stammdaten von Yahoo ueber yfinance: Firmenbeschreibung und
+    Analysten-Kursziele. Ein Abruf je Titel."""
+    if sym not in _INFO:
+        try:
+            import yfinance as yf
+            _INFO[sym] = yf.Ticker(sym).info or {}
+        except Exception as e:  # noqa: BLE001
+            log(f"  Info {sym}: {e}")
+            _INFO[sym] = {}
+        time.sleep(0.4)
+    return _INFO[sym]
+
+
+def profil_en(sym: str) -> str | None:
+    """Rueckfall fuer Titel ohne deutsches Profil: die ersten zwei Saetze der
+    englischen Firmenbeschreibung von Yahoo."""
+    text = info(sym).get("longBusinessSummary") or ""
+    saetze = re.split(r"(?<=[.!?])\s+(?=[A-Z])", text.strip())
+    kurz = " ".join(saetze[:2]).strip()
+    return kurz[:420] or None
+
+
+def kursziel(sym: str, kurs: float | None) -> dict | None:
+    """Durchschnittliches Analysten-Kursziel auf 12 Monate, als Abstand zum
+    aktuellen Kurs. Unter drei Analysten wird nichts gezeigt."""
+    i = info(sym)
+    n, ziel = i.get("numberOfAnalystOpinions") or 0, i.get("targetMeanPrice")
+    basis = kurs or i.get("currentPrice")
+    if not ziel or not basis or n < 3:
+        return None
+    pct = lambda v: round((v / basis - 1) * 100) if v else None  # noqa: E731
+    return {"pct": pct(ziel), "tief": pct(i.get("targetLowPrice")), "hoch": pct(i.get("targetHighPrice")),
+            "n": n, "urteil": i.get("recommendationKey")}
+
+
 def kandidat(dos: dict, rang: int, n: int, fx_now: float) -> dict:
     c = dos["candidate"]
     sym = c["symbol"]
@@ -370,7 +429,12 @@ def kandidat(dos: dict, rang: int, n: int, fx_now: float) -> dict:
         "spread": spread_pct(isin) if gelistet else None,
         "tech": ind in TECH_BRANCHEN, "isin": isin,
         "serie": serie(reihe),
+        "profilEN": None if sym in PROFILE else profil_en(sym),
+        "ziel": kursziel(sym, kurs),
     }
+
+
+ANZAHL = 10  # je Groesse, die App zeigt erst 3 und klappt den Rest auf
 
 
 def tiers(latest: dict, fx_now: float) -> dict:
@@ -381,7 +445,7 @@ def tiers(latest: dict, fx_now: float) -> dict:
     out = {}
     for key, liste in (("klein", klein), ("mittel", mittel), ("gross", g)):
         log(f"Korb {key}: {len(liste)} brauchbar")
-        out[key] = [kandidat(d, i + 1, len(liste), fx_now) for i, d in enumerate(liste[:3])]
+        out[key] = [kandidat(d, i + 1, len(liste), fx_now) for i, d in enumerate(liste[:ANZAHL])]
     return out
 
 
@@ -449,6 +513,44 @@ def virtuell() -> list:
                     "seit": tm(p["opened"]), "pct": round(p["rendite_pct"], 1),
                     "quelle": p.get("quelle"), "status": p.get("status")})
     return out
+
+
+def trump(fx_now: float) -> dict | None:
+    """Titel aus Trumps Pflichtmeldungen, Entwicklung in Euro seit dem Tag,
+    an dem die Meldung oeffentlich wurde (vorher konnte sie niemand nutzen)."""
+    try:
+        liste = json.loads((DATA / "trump_watchlist.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    try:
+        meta = json.loads((DATA / "trump_meldungen.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        meta = {}
+    titel = []
+    for e in liste:
+        sym, d = e["symbol"], e.get("gemeldet")
+        y = yahoo(sym) or {}
+        reihe = y.get("reihe", {})
+        k0, j = (am(reihe, d) if d and reihe else None), letzter(reihe)
+        pct = None
+        if k0 and j:
+            pct = round(((j[1] / k0) * (fx_now / fx_am("USD", d)) - 1) * 100, 1)
+        band = re.search(r"Kaufbandbreite (.+? USD)", e.get("hinweis") or "")
+        titel.append({"sym": sym, "name": name_putzen(y.get("name") or e.get("name") or sym),
+                      "gemeldet": d, "zeitraum": e.get("zeitraum"),
+                      "band": band.group(1) if band else None, "pct": pct})
+    werte = [t["pct"] for t in titel if t["pct"] is not None]
+    vergleich = None
+    spx = (yahoo("^GSPC") or {}).get("reihe", {})
+    tage = sorted({t["gemeldet"] for t in titel if t["gemeldet"]})
+    if spx and tage:
+        k0, j = am(spx, tage[0]), letzter(spx)
+        if k0 and j:
+            vergleich = round(((j[1] / k0) * (fx_now / fx_am("USD", tage[0])) - 1) * 100, 1)
+    titel.sort(key=lambda t: -(t["pct"] if t["pct"] is not None else -999))
+    return {"titel": titel, "median": round(statistics.median(werte), 1) if werte else None,
+            "plus": sum(v > 0 for v in werte), "n": len(werte), "sp500": vergleich,
+            "meldungen": meta.get("meldungen", []), "hinweis": meta.get("hinweis")}
 
 
 # ── Gekauft: Issues einlesen und auswerten ──────────────────────────────
@@ -748,7 +850,9 @@ def main(argv: list) -> int:
         "tiers": tiers(latest, fx_now),
         "archiv": archiv(tr, fx_now),
         "virtuell": virtuell(),
+        "trump": trump(fx_now),
         "gekauft": gekauft_auswerten(liste),
+        "profile": PROFILE,
     }
     GEKAUFT_DATEI.write_text(json.dumps(liste, ensure_ascii=False, indent=1), encoding="utf-8")
     APP_DATEI.write_text(json.dumps(app, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

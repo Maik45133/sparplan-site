@@ -1,1897 +1,412 @@
-/* Sparplan OS. Liest data/latest.json zur Laufzeit und baut daraus alle Ansichten.
-   Kein Build, kein Framework, keine externe Abhängigkeit außer holo-core.js.
-   Wechselkurse stammen aus dem Datenlauf selbst (fx_at_entry/fx_now je Position,
-   fx_eur_je_usd fürs Ganze) und werden nur für ältere Einträge ohne diese Felder
-   live von der EZB über api.frankfurter.dev nachgeladen.
-
-   Stand 30.08.2026: von fünf auf drei Ansichten reduziert (Kandidaten, Verlauf,
-   Depot), weil "Markt" und "Screening" denselben Inhalt zweimal zeigten und
-   "Makro" ein Nebenschauplatz war. Rechtsakte, Notenbanken und Termine stehen
-   jetzt als "Marktumfeld" am Fuß der Kandidatenansicht statt in einem eigenen
-   Tab: unterstützender Kontext, keine eigene Bestimmung. */
-(() => {
+/* Sparplan. Drei Bereiche: Kaufen, Depot, Archiv.
+   Liest data/app.json (öffentlich, sonntags neu) und data/depot_live.enc
+   (verschlüsselt, entsperrt nur auf deinem Gerät). Kein Server, kein Tracking. */
 'use strict';
 
-const CFG = {
-  repo:'Maik45133/sparplan-site',
-  data:'data/latest.json',
-  depot:'data/depot.enc',
-  virtuell:'data/virtual_portfolio.json',
-  register:'data/score_register.json',
-  backtest:'data/backtest.json',
-  fx:'https://api.frankfurter.dev/v1'
+const REPO = 'Maik45133/sparplan-site';
+const $ = s => document.querySelector(s);
+let APP = null, DEPOT = null, tab = 'kaufen', run = 0, last = null, gid = 0;
+
+/* ───────── Formate ───────── */
+const nf = (n, d = 2) => Number(n).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+const eur = (n, d = 2) => nf(n, d) + '\u00a0€';
+const usd = n => nf(n) + '\u00a0$';
+const sp = (n, d = 1) => n == null ? 'offen' : (n > 0 ? '+' : n < 0 ? '−' : '±') + nf(Math.abs(n), d) + '\u00a0%';
+const MON = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+const kurzDatum = iso => iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.` : '';
+const datum = iso => { if (!iso) return ''; const [, m, d] = iso.split('-'); return `${+d}. ${MON[+m - 1]}`; };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ini = s => String(s).replace(/\.(DE|HK)$/, '').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase();
+const KORB = { klein: 'Wachstum', gross: 'Groß', frueh: '13F' };
+function tageBis(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + 'T12:00:00'), h = new Date(); h.setHours(12, 0, 0, 0);
+  return Math.round((d - h) / 864e5);
+}
+function kalenderwoche() {
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+  const w1 = new Date(d.getFullYear(), 0, 4);
+  return 1 + Math.round(((d - w1) / 864e5 - 3 + (w1.getDay() + 6) % 7) / 7);
+}
+const veraenderung = s => s && s.length > 1 ? (s[s.length - 1][1] / s[0][1] - 1) * 100 : null;
+
+/* ───────── Speicher am Gerät ───────── */
+const lokal = {
+  get(k, f) { try { return JSON.parse(localStorage.getItem(k)) ?? f; } catch (e) { return f; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* privat */ } }
 };
-
-/* ───────── Werkzeug ───────── */
-const $  = (s, r = document) => r.querySelector(s);
-const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
-  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
-const nf = (v, d = 1) => v === null || v === undefined || Number.isNaN(v)
-  ? '–' : Number(v).toLocaleString('de-DE', {minimumFractionDigits:d, maximumFractionDigits:d});
-const pct  = (v, d = 1) => v === null || v === undefined ? '–' : (v > 0 ? '+' : '') + nf(v, d) + ' %';
-const eur  = (v, d = 2) => v === null || v === undefined ? '–' : nf(v, d) + ' €';
-const sign = v => v > 0.0001 ? 'up' : v < -0.0001 ? 'down' : '';
-
-function mrd(v){
-  if (v == null) return '–';
-  if (v >= 1e12) return nf(v / 1e12, 2) + ' Bio';
-  if (v >= 1e9)  return nf(v / 1e9, 1) + ' Mrd';
-  if (v >= 1e6)  return nf(v / 1e6, 0) + ' Mio';
-  return nf(v, 0);
-}
-function datum(s){
-  if (!s) return '–';
-  const d = new Date(s);
-  if (Number.isNaN(+d)) return String(s).slice(0, 10);
-  return d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric'});
-}
-const iso = s => String(s || '').slice(0, 10);
-const alterTage = s => Math.floor((Date.now() - new Date(s)) / 864e5);
-
-/* ───────── Bewegung ─────────
-   Rein darstellend: Zahlen zählen hoch statt zu springen, Karten blenden
-   beim Scrollen sanft ein, Balken füllen sich erst, wenn sie sichtbar
-   werden. Nichts hier verändert einen Wert, nur wie er erscheint.
-   `data-count` (+ optional `data-decimals`, `data-fmt="pct"`) auf einem
-   Element lässt seinen Text hochzählen; `data-w` auf einer Balkenzeile
-   setzt beim Sichtbarwerden `--w` auf dem inneren `i`, was die ohnehin
-   vorhandene CSS-Transition auslöst. */
-const REDUZIERT = matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-function animZahl(el, ziel, {decimals = 0, fmt} = {}){
-  const format = v => fmt === 'pct' ? pct(v, decimals)
-    : fmt === 'pct-plain' ? nf(v, decimals) + ' %' : nf(v, decimals);
-  if (ziel == null || Number.isNaN(ziel)) return;
-  if (REDUZIERT){ el.textContent = format(ziel); return; }
-  const t0 = performance.now(), dauer = 900;
-  const ease = x => 1 - Math.pow(1 - x, 3);
-  (function frame(t){
-    const p = Math.min(1, (t - t0) / dauer);
-    el.textContent = format(ziel * ease(p));
-    if (p < 1) requestAnimationFrame(frame); else el.textContent = format(ziel);
-  })(t0);
-}
-
-/* Was beim Sichtbarwerden eines Elements passiert: einblenden, eine
-   enthaltene Zahl hochzählen lassen, enthaltene Balken auf ihren Zielwert
-   setzen. Einzelbeobachter und Gruppenbeobachter benutzen dasselbe, damit
-   eine Kachel in einer Reihe sich genauso verhält wie eine einzelne. */
-function aufdecken(el){
-  el.classList.add('in');
-  const zEl = el.matches('[data-count]') ? el : el.querySelector('[data-count]');
-  if (zEl) animZahl(zEl, parseFloat(zEl.dataset.count), {decimals:+(zEl.dataset.decimals || 0), fmt:zEl.dataset.fmt});
-  if (el.dataset.w != null){
-    const fill = el.querySelector('.compare-fill');
-    if (fill) fill.style.setProperty('--w', el.dataset.w + '%');
-  }
-  $$('.bar i[data-w]', el).forEach(i => i.style.setProperty('--w', i.dataset.w + '%'));
-}
-
-const revealBeobachter = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
-  entries.forEach(e => {
-    if (!e.isIntersecting) return;
-    aufdecken(e.target);
-    revealBeobachter.unobserve(e.target);
-  });
-}, {threshold:0.3, rootMargin:'0px 0px -30px 0px'}) : null;
-
-function beobachte(el){
-  if (!el) return;
-  if (!revealBeobachter){ aufdecken(el); return; }
-  revealBeobachter.observe(el);
-}
-const beobachteAlle = (root, sel) => $$(sel, root).forEach(beobachte);
-
-/* Reihen, die seitlich aus dem Bild ragen (die Highlight-Galerie wischt
-   horizontal), dürfen nicht Karte für Karte beobachtet werden: was rechts
-   außerhalb liegt, bliebe sonst unsichtbar stehen. Stattdessen hängt die
-   ganze Reihe an einem Beobachter und die Karten laufen gestaffelt ein. */
-const gruppeBeobachter = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
-  entries.forEach(e => {
-    if (!e.isIntersecting) return;
-    [...e.target.children].forEach((kind, i) => {
-      kind.style.transitionDelay = (i * 0.07).toFixed(2) + 's';
-      /* Die Zahl der letzten Karte soll nicht sofort loslaufen, während die
-         Karte selbst noch einblendet: erst die Karte, dann ihr Inhalt. */
-      setTimeout(() => aufdecken(kind), i * 70);
+const IDB = {
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('sparplan', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('k');
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     });
-    gruppeBeobachter.unobserve(e.target);
-  });
-}, {threshold:0.15}) : null;
-
-function beobachteGruppe(el){
-  if (!el) return;
-  if (!gruppeBeobachter){ [...el.children].forEach(aufdecken); return; }
-  gruppeBeobachter.observe(el);
-}
-
-/* Balken innerhalb eines Detailblatts (Sheet): kein Scrollen nötig, das
-   Blatt ist sofort ganz sichtbar. Zwei rAF sorgen dafür, dass der Browser
-   den Zustand "--w:0" erst zeichnet, bevor der Zielwert gesetzt wird,
-   sonst würde die CSS-Transition nicht auslösen. */
-function aktiviereBalken(root){
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    $$('.bar i[data-w]', root).forEach(i => i.style.setProperty('--w', i.dataset.w + '%'));
-  }));
-}
-
-/* ───────── Feinschliff der Bewegung ─────────
-   Alles hier ist rein optisch und hängt an keiner Berechnung. Bei
-   prefers-reduced-motion wird nichts davon eingehängt. */
-
-/* Headline zeilenweise: die durch <br> getrennten Zeilen bekommen je einen
-   Rahmen mit overflow:hidden, aus dem der Text hochsteigt. Das Markup wird
-   hier erzeugt statt in index.html, damit die Überschrift ohne JS eine
-   ganz normale Überschrift bleibt. */
-function headlineZerlegen(h1){
-  if (!h1 || h1.dataset.zerlegt) return;
-  const zeilen = h1.innerHTML.split(/<br\s*\/?>/i);
-  if (zeilen.length < 2) return;
-  h1.innerHTML = zeilen
-    .map(z => `<span class="zeile"><span>${z.trim()}</span></span>`).join('');
-  h1.dataset.zerlegt = '1';
-}
-
-/* Parallax: --par läuft von 1 (Block kommt von unten ins Bild) über 0
-   (mittig) nach -1 (verlässt es oben). Ein einziger Beobachter und ein
-   gedrosselter Scroll-Handler für alle Blöcke zusammen. */
-const parallaxBloecke = new Set();
-let parallaxLaeuft = false;
-function parallaxSchritt(){
-  parallaxLaeuft = false;
-  const h = innerHeight;
-  parallaxBloecke.forEach(el => {
-    const r = el.getBoundingClientRect();
-    if (r.bottom < -200 || r.top > h + 200) return;
-    const mitte = r.top + r.height / 2;
-    el.style.setProperty('--par', ((mitte - h / 2) / (h / 2)).toFixed(3));
-  });
-}
-function parallaxAnstoss(){
-  if (parallaxLaeuft) return;
-  parallaxLaeuft = true;
-  requestAnimationFrame(parallaxSchritt);
-}
-let parallaxVerdrahtet = false;
-function parallax(el){
-  if (!el || REDUZIERT) return;
-  parallaxBloecke.add(el);
-  if (!parallaxVerdrahtet){
-    parallaxVerdrahtet = true;
-    addEventListener('scroll', parallaxAnstoss, {passive:true});
-    addEventListener('resize', parallaxAnstoss);
-  }
-  parallaxAnstoss();
-}
-
-/* Karten neigen sich zum Zeiger. Die Werte gehen als --kx/--ky ins CSS,
-   die eigentliche Transformation macht der Stylesheet, damit sie mit den
-   übrigen Hover-Regeln in einer Kaskade steht. */
-function kippbar(el){
-  if (!el || REDUZIERT || !matchMedia('(hover:hover)').matches || innerWidth < 760) return;
-  el.classList.add('kippbar');
-  el.addEventListener('pointermove', e => {
-    const r = el.getBoundingClientRect();
-    el.style.setProperty('--kx', (((e.clientX - r.left) / r.width) * 2 - 1).toFixed(3));
-    el.style.setProperty('--ky', (((e.clientY - r.top) / r.height) * 2 - 1).toFixed(3));
-    el.classList.add('kippt');
-  });
-  el.addEventListener('pointerleave', () => {
-    el.classList.remove('kippt');
-    el.style.setProperty('--kx', 0); el.style.setProperty('--ky', 0);
-  });
-}
-const kippbarAlle = (root, sel) => $$(sel, root).forEach(kippbar);
-
-/* Lesefortschritt der aktiven Ansicht als dünner Faden unter der Leiste. */
-function fortschrittsfaden(){
-  if (REDUZIERT) return;
-  const bar = document.createElement('div');
-  bar.className = 'fortschritt';
-  $('.topbar')?.appendChild(bar);
-  let warte = false;
-  const mess = () => {
-    warte = false;
-    const max = document.documentElement.scrollHeight - innerHeight;
-    bar.style.setProperty('--f', max > 40 ? Math.min(1, scrollY / max).toFixed(4) : 0);
-  };
-  addEventListener('scroll', () => {
-    if (warte) return; warte = true; requestAnimationFrame(mess);
-  }, {passive:true});
-  addEventListener('resize', mess);
-  mess();
-}
-
-const KOMPONENTE = {
-  revision_momentum:'Analystenrevisionen', growth_acceleration:'Wachstumsbeschleunigung',
-  margin_trend:'Margentrend', fcf_trend:'Cashflow-Trend',
-  insider_cluster:'Insiderkäufe', dilution:'Verwässerung',
-  momentum_12_1:'Kursmomentum über 12 Monate', earnings_drift:'Reaktion auf die letzten Zahlen'
-};
-const KURZ = {
-  revision_momentum:'Revisionen', growth_acceleration:'Beschleunigung',
-  margin_trend:'Margen', fcf_trend:'Cashflow',
-  insider_cluster:'Insider', dilution:'kaum Verwässerung',
-  momentum_12_1:'Momentum', earnings_drift:'Earnings-Drift'
-};
-const GRUND = {
-  mining_explorer:'Explorer ohne Produktion', no_revenue:'kein Umsatz', too_small:'zu klein',
-  too_large:'zu groß', low_growth:'Wachstum zu schwach', low_margin:'Marge zu dünn',
-  negative_fcf:'Cashflow negativ', illiquid:'zu wenig Handel', no_data:'keine Daten',
-  market_cap_out_of_range:'Marktkapitalisierung passt nicht', crypto_treasury:'Krypto-Bestand statt Geschäft',
-  mortgage_reit:'Hypotheken-REIT', mining_explorer_alt:'Rohstoff-Explorer',
-  sector_not_allowed:'Sektor ausgeschlossen', growth_below_threshold:'Wachstum unter Schwelle'
-};
-const FELD = {
-  handel_zoelle:'Handel und Zölle', geldpolitik:'Geldpolitik', energie:'Energie',
-  finanzen_krypto:'Finanzen und Krypto', gesundheit:'Gesundheit', verteidigung:'Verteidigung',
-  technologie:'Technologie', umwelt:'Umwelt', arbeitsmarkt:'Arbeitsmarkt',
-  arbeitsmarkt_migration:'Arbeitsmarkt und Migration', infrastruktur:'Infrastruktur',
-  bildung:'Bildung', landwirtschaft:'Landwirtschaft'
-};
-const QUELLE = {fed:'Fed', ecb:'EZB', bls_latest:'BLS', bls:'BLS'};
-const label = (map, k) => map[k] || String(k).replace(/_/g, ' ');
-
-/* ───────── Zustand ───────── */
-let D = null, FX = null, policyField = '*', histRaster = 'woche';
-const gezeigt = {klein:5, gross:5, frueh:5};
-
-const KOERBE = {
-  klein: {kurz:'K', chip:'1–20 Mrd', titel:'Wachstum', unter:'1 bis 20 Mrd',
-          lang:'Wachstum, 1 bis 20 Mrd',
-          d:'dossiers', r:'rejected', s:'screened', cls:''},
-  gross: {kurz:'G', chip:'ab 20 Mrd', titel:'Große Werte', unter:'ab 20 Mrd',
-          lang:'Große Werte, ab 20 Mrd',
-          d:'dossiers_large_cap', r:'rejected_large_cap', s:'screened_large_cap', cls:'g'},
-  frueh: {kurz:'F', chip:'13F', titel:'Frühphase', unter:'aus 13F-Meldungen',
-          lang:'Frühphase aus 13F-Meldungen',
-          d:'dossiers_early_bets', r:'rejected_early_bets', s:'screened_early_bets', cls:'f'}
-};
-const BENCHMARK_KURZ = {IWO:'IWO', '^GSPC':'S&P 500'};
-
-function urteil(s){
-  if (!s.reliable)   return {t:'Datenlücken', k:'warn'};
-  if (s.total >= 65) return {t:'Kaufkandidat', k:'go'};
-  if (s.total >= 55) return {t:'Beobachten',   k:'mid'};
-  return {t:'Nachrangig', k:'low'};
-}
-const treiber = s => (s.components || [])
-  .filter(k => k.normalized >= 70 && !k.ausgeschlossen)
-  .sort((a, b) => b.normalized - a.normalized)
-  .slice(0, 2).map(k => KURZ[k.name] || k.name);
-
-const korbListe = id => (D[KOERBE[id].d] || []).map(d => ({...d, korb:id}))
-  .sort((a, b) => b.scorecard.total - a.scorecard.total);
-const alleKandidaten = () => Object.keys(KOERBE).flatMap(korbListe)
-  .sort((a, b) => b.scorecard.total - a.scorecard.total);
-const korbVon = sym => Object.keys(KOERBE)
-  .find(id => (D[KOERBE[id].d] || []).some(d => d.candidate.symbol === sym));
-
-/* ───────── Wechselkurse ─────────
-   Der Einstand wurde in Dollar erfasst, gehandelt wird in Euro. Beides umzurechnen
-   mischt Kursgewinn und Währungsgewinn, deshalb wird der Währungseffekt separat
-   ausgewiesen statt versteckt. */
-async function ladeFX(abDatum){
-  try{
-    const r = await fetch(`${CFG.fx}/${abDatum}..?base=USD&symbols=EUR`, {cache:'no-store'});
-    if (!r.ok) throw new Error(r.status);
-    const j = await r.json();
-    const tage = Object.keys(j.rates || {}).sort();
-    if (!tage.length) throw new Error('leer');
-    FX = {tage, rate:Object.fromEntries(tage.map(t => [t, j.rates[t].EUR]))};
-  }catch(e){ FX = null; }
-}
-function kursAm(d){
-  if (!FX) return null;
-  let best = null;
-  for (const t of FX.tage){ if (t <= d) best = t; else break; }
-  return FX.rate[best || FX.tage[0]];
-}
-const kursZuletzt = () => FX ? FX.rate[FX.tage[FX.tage.length - 1]] : null;
-/* Der Lauf schreibt den Kurs inzwischen selbst (fx_eur_je_usd), das ist die
-   verlässlichere Quelle. Die Live-EZB-Abfrage bleibt nur als Rückfallebene für
-   einen Datenstand, der noch nicht neu gelaufen ist. */
-const kursJetzt = () => D?.fx_eur_je_usd ?? kursZuletzt();
-
-/* ───────── Navigation ─────────
-   Drei Ziele statt fünf: "Kandidaten" trägt jetzt, was früher Markt und
-   Screening getrennt zeigten, plus das frühere Makro als Abschnitt am Fuß. */
-const TABS = [
-  ['kandidaten','Kandidaten','<circle cx="10.5" cy="10.5" r="6.3"/><path d="M19.5 19.5 15 15"/><path d="M8 10.5h5M10.5 8v5" opacity=".55"/>'],
-  ['virtuell',  'Virtuell',  '<path d="M9.5 3.2v6.1L4.9 17.9a2 2 0 0 0 1.8 3h10.6a2 2 0 0 0 1.8-3l-4.6-8.6V3.2"/><path d="M8.2 3.2h7.6"/><path d="M7.4 14.8h9.2" opacity=".55"/>'],
-  ['verlauf',   'Verlauf',   '<path d="M3.5 19.5h17"/><path d="M6 19.5V13M10.5 19.5V8.5M15 19.5v-4.5M19.5 19.5V5.5"/>'],
-  ['depot',     'Depot',     '<rect x="3" y="8.2" width="18" height="12" rx="2.2"/><path d="M8.2 8.2V6a3.8 3.8 0 0 1 7.6 0v2.2"/><path d="M12 13v2.4" opacity=".7"/>']
-];
-let aktiv = 0;
-
-function buildTabs(){
-  $('#tabbar').innerHTML = TABS.map(([id, txt, path], i) =>
-    `<button data-go="${id}" class="${i === 0 ? 'on' : ''}" aria-label="${txt}">
-       <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">${path}</svg>
-       <em>${txt}</em></button>`).join('');
-  $$('#tabbar button').forEach(b => b.onclick = () => go(b.dataset.go));
-}
-function go(id){
-  const neu = TABS.findIndex(t => t[0] === id);
-  if (neu < 0) return;
-  const rueck = neu < aktiv;
-  aktiv = neu;
-  $$('.view').forEach(v => {
-    const an = v.id === 'v-' + id;
-    v.classList.toggle('rueck', rueck);
-    v.classList.toggle('on', an);
-  });
-  $$('#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.go === id));
-  location.hash = id;
-  window.scrollTo({top:0, behavior:'instant'});
-}
-
-/* ───────── Detailblatt ───────── */
-function sheet(html){
-  $('#sheet-body').innerHTML = html;
-  $('#sheet').classList.add('on');
-  document.body.style.overflow = 'hidden';
-  aktiviereBalken($('#sheet-body'));
-}
-function closeSheet(){
-  $('#sheet').classList.remove('on');
-  document.body.style.overflow = '';
-}
-
-/* Dieselbe Regel wie `pick_drivers` in position.py: nur Komponenten, die den
-   Rang wirklich getragen haben, sortiert nach Beitrag statt nach Perzentil
-   allein, hoechstens drei. Hier in JS verdoppelt, weil die Seite selbst kein
-   Python ausfuehren kann; beide Stellen muessen bei einer Aenderung
-   mitgezogen werden. */
-function kaufTreiber(s){
-  return (s.components || [])
-    .filter(c => c.normalized != null && c.normalized >= 70 && !c.ausgeschlossen)
-    .sort((a, b) => b.normalized * b.weight - a.normalized * a.weight)
-    .slice(0, 3)
-    .map(c => ({name:c.name, percentile:c.normalized, weight:c.weight}));
-}
-
-/* ───────── Kandidatenzeile ───────── */
-function zeile(d, rang){
-  const s = d.scorecard, c = d.candidate, K = KOERBE[d.korb] || KOERBE.klein;
-  const u = urteil(s), tr = treiber(s);
-  return `<button class="row reveal" data-sym="${esc(c.symbol)}">
-    <span class="rhead">
-      ${rang != null ? `<span class="rang">${rang + 1}</span>` : ''}
-      <span class="korb ${K.cls}">${K.kurz}</span>
-      <span class="sym">${esc(c.symbol)}</span>
-      <span class="score">${nf(s.total, 1)}</span>
-      <span class="chev">›</span>
-    </span>
-    <span class="nm">${esc(c.name)} · ${mrd(c.market_cap)} · ${esc(c.sector || '')}</span>
-    <span class="bar"><i data-w="${Math.max(2, Math.min(100, s.total))}"></i></span>
-    <span class="tags">
-      <span class="tag ${u.k}">${u.t}</span>
-      ${tr.map(t => `<span class="tag">${esc(t)}</span>`).join('')}
-      ${d.trump_watch ? '<span class="tag trump">Trump-Depot</span>' : ''}
-    </span>
-  </button>`;
-}
-function bindRows(root, pool){
-  $$('.row', root).forEach(b => {
-    b.onclick = () => {
-      const d = pool.find(x => x.candidate.symbol === b.dataset.sym);
-      if (d){ sheet(detail(d)); bindKaufFormular($('#sheet-body'), d); }
-    };
-  });
-  beobachteAlle(root, '.row');
-}
-
-function detail(d){
-  const c = d.candidate, e = d.enrichment || {}, s = d.scorecard;
-  const u = urteil(s), K = KOERBE[d.korb] || KOERBE.klein;
-  const k = kursJetzt();
-
-  /* Eine Komponente kann belegt sein und trotzdem nicht zählen: wenn alle
-     Titel der Kohorte denselben Rang haben, verschiebt sie die Reihenfolge um
-     nichts. Sie fällt dann aus der Gewichtung. Das muss hier sichtbar sein,
-     sonst ergeben die Prozentzahlen in der Liste zusammen mehr als das, was
-     den Score tatsächlich gebildet hat. */
-  const komp = (s.components || []).map(x => `
-    <div style="padding:10px 0;border-bottom:1px solid var(--line)${x.ausgeschlossen ? ';opacity:.55' : ''}">
-      <div style="display:flex;justify-content:space-between;font-size:14px">
-        <span>${label(KOMPONENTE, x.name)} <span class="muted">${x.ausgeschlossen ? `${x.weight} % ungenutzt` : `${x.weight} %`}</span></span>
-        <span class="mono">${nf(x.normalized, 0)}</span>
-      </div>
-      <div class="bar"><i data-w="${Math.max(2, Math.min(100, x.normalized))}"></i></div>
-      ${x.ausgeschlossen ? `<div class="muted" style="font-size:11.5px;margin-top:5px">
-        Zählt nicht: ${esc(x.ausgeschlossen)}, trennt das Feld also nicht. Das Gewicht
-        verteilt sich auf die übrigen Komponenten.</div>` : ''}
-    </div>`).join('');
-
-  const rows = [
-    ['Korb', esc(K.lang)],
-    ['Sektor', esc(c.sector)],
-    ['Marktkapitalisierung', mrd(c.market_cap) + ' USD' +
-      (k ? ` <span class="muted">≈ ${mrd(c.market_cap * k)} €</span>` : '')],
-    ['Umsatzwachstum', pct(c.revenue_growth)],
-    ['Bruttomarge', pct(c.gross_margin)],
-    ['Freier Cashflow', mrd(c.fcf) + ' USD'],
-    ['Handelsvolumen', mrd(c.avg_volume) + ' Stück'],
-    ['ISIN', `<span class="code">${esc(c.isin)}</span>`],
-    ['Revisionen, 30 Tage', `<span class="up">${e.up_revisions_30d ?? '–'} hoch</span> / <span class="down">${e.down_revisions_30d ?? '–'} runter</span>`],
-    ['Wachstum, Quartalsvergleich', `${nf(e.revenue_growth_prior_q)} → ${nf(e.revenue_growth_recent_q)} %`],
-    ['Insider, 90 Tage', `${e.insider_buyers_90d ?? '–'} kaufen / ${e.insider_sellers_90d ?? '–'} verkaufen`],
-    ['Aktienzahl, Jahresänderung', pct(e.shares_growth_yoy, 2)],
-    ['Leerverkaufsquote', e.short_pct_float == null ? '–' : nf(e.short_pct_float) + ' %'],
-    ['Institutionell gehalten', e.institutional_pct == null ? '–' : nf(e.institutional_pct) + ' %'],
-    ['Nächste Zahlen', datum(e.next_earnings)],
-    ['Datenabdeckung', nf(s.coverage, 0) + ' %']
-  ].map(([a, b]) => `<div class="kv"><span>${a}</span><span>${b}</span></div>`).join('');
-
-  return `
-    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px">
-      <div style="min-width:0">
-        <div class="sym" style="font-size:25px">${esc(c.symbol)}</div>
-        <div class="nm" style="white-space:normal">${esc(c.name)}</div>
-        <div class="tags" style="margin-top:9px">
-          <span class="tag ${u.k}">${u.t}</span>
-          ${treiber(s).map(t => `<span class="tag">${esc(t)}</span>`).join('')}
-        </div>
-      </div>
-      <div style="margin-left:auto;text-align:right;flex:none">
-        <div class="mono" style="font-size:32px;font-weight:700;line-height:1;letter-spacing:-.02em">${nf(s.total, 1)}</div>
-        <div class="muted" style="font-size:11px;margin-top:3px">Score</div>
-      </div>
-    </div>
-    <h2 class="sec">Zusammensetzung</h2>${komp}
-    <h2 class="sec">Kennzahlen</h2>${rows}
-    ${zusatzsignale(d)}
-    <h2 class="sec">Primärquellen</h2>
-    <div class="kv"><span>SEC EDGAR</span><span><a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${esc(c.symbol)}&type=10-K" target="_blank" rel="noopener">Berichte ↗</a></span></div>
-    <div class="kv"><span>Kurs und Termine</span><span><a href="https://finance.yahoo.com/quote/${esc(c.symbol)}" target="_blank" rel="noopener">Yahoo Finance ↗</a></span></div>
-    <div style="height:10px"></div>
-    ${kaufAbschnitt(d)}
-    <button class="btn ghost" style="width:100%" data-close>Schließen</button>`;
-}
-
-/* Kaufen heißt hier: eine Positionsakte anlegen, keine Order auslösen. Die
-   Seite kann nichts kaufen, sie hält nur fest, warum jemand gekauft hat, für
-   die spätere Prüfung. Ohne entsperrtes Depot fehlt der Schlüssel zum
-   Zurückschreiben, deshalb dann nur ein Hinweis statt eines Formulars. */
-function kaufAbschnitt(d){
-  const sym = d.candidate.symbol;
-  if (!DEPOT){
-    return `<div class="card"><p>Zum Anlegen einer Positionsakte zuerst im
-      Depot-Reiter entsperren.</p></div>`;
-  }
-  const bereits = (DEPOT.positionen || []).some(p => p.symbol === sym && p.status !== 'geschlossen');
-  if (bereits){
-    return `<div class="card"><p>Für ${esc(sym)} liegt bereits eine offene
-      Positionsakte im Depot.</p></div>`;
-  }
-  const preis = d.price != null ? nf(d.price, 2) : '';
-  return `
-    <h2 class="sec">Gekauft?</h2>
-    <div class="card">
-      <p style="margin-bottom:12px">Hält fest, warum gekauft wurde, damit die
-      wöchentliche Prüfung später weiß, ob der Grund noch gilt.</p>
-      <form data-kauf="${esc(sym)}">
-        <div class="kv"><span>Kaufpreis</span>
-          <span><input type="number" step="0.01" name="preis" value="${esc(preis)}"
-            required style="width:110px;text-align:right;border:1px solid var(--line2);
-            border-radius:8px;padding:6px 8px;font-size:14.5px;background:var(--bg);
-            color:var(--ink)"> USD</span></div>
-        <div class="kv"><span>Stückzahl</span>
-          <span><input type="number" step="1" min="1" name="stueck" required
-            style="width:110px;text-align:right;border:1px solid var(--line2);
-            border-radius:8px;padding:6px 8px;font-size:14.5px;background:var(--bg);
-            color:var(--ink)"></span></div>
-        <div class="kv"><span>Datum</span>
-          <span><input type="date" name="datum" value="${new Date().toISOString().slice(0,10)}"
-            required style="border:1px solid var(--line2);border-radius:8px;
-            padding:6px 8px;font-size:14.5px;background:var(--bg);color:var(--ink)"></span></div>
-        <div style="height:6px"></div>
-        <button class="btn" type="submit" style="width:100%">Positionsakte anlegen</button>
-      </form>
-    </div>`;
-}
-function bindKaufFormular(root, d){
-  const f = root.querySelector(`form[data-kauf]`);
-  if (!f) return;
-  f.onsubmit = async ev => {
-    ev.preventDefault();
-    const fd = new FormData(f);
-    const preis = parseFloat(fd.get('preis')), stueck = parseInt(fd.get('stueck'), 10);
-    const datum = fd.get('datum');
-    if (!(preis > 0) || !(stueck > 0)) return;
-    const K = KOERBE[d.korb] || KOERBE.klein;
-    DEPOT.positionen = DEPOT.positionen || [];
-    DEPOT.positionen.push({
-      symbol: d.candidate.symbol, name: d.candidate.name, korb: d.korb,
-      opened: datum, entry_price_usd: preis, quantity: stueck,
-      score_at_entry: d.scorecard.total,
-      benchmark_symbol: K.d === 'dossiers_large_cap' ? '^GSPC' : 'IWO',
-      drivers: kaufTreiber(d.scorecard),
-      status: 'halten',
-      summary: 'Angelegt, noch keine wöchentliche Prüfung gelaufen.'
-    });
-    await depotSpeichern();
-    zeigeSpeicherHinweis();
-  };
-}
-
-/* Trump-Beobachtungsliste, FDA-Rückrufe, Bundesaufträge: alle drei rein
-   informativ, keiner davon fließt in den Score ein, siehe pipeline.py. Nur
-   gerendert, wenn für den Titel tatsächlich etwas vorliegt. */
-function zusatzsignale(d){
-  const tw = d.trump_watch, fda = d.fda_signals, usa = d.usaspending_signals;
-  if (!tw && !fda && !usa) return '';
-  const teile = [];
-  if (tw) teile.push(`<div class="kv"><span>Trump-Depot</span>
-      <span>seit ${datum(tw.gemeldet)} · ${esc(tw.zeitraum || '')}</span></div>
-    <div class="kv"><span>Quelle</span>
-      <span><a href="${esc(tw.quelle_url)}" target="_blank" rel="noopener">${esc(tw.quelle || 'Offenlegung')} ↗</a></span></div>
-    ${tw.hinweis ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">${esc(tw.hinweis)}</p>` : ''}`);
-  if (fda) teile.push(`<div class="kv"><span>FDA-Rückrufe, 12 Monate</span><span>${fda.anzahl_12m}</span></div>
-    ${fda.letzter ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">Jüngster: ${datum(fda.letzter.datum)},
-      ${esc(fda.letzter.klasse || '')} (${esc(fda.letzter.art || '')}) · ${esc(fda.letzter.grund || '')}</p>` : ''}`);
-  if (usa) teile.push(`<div class="kv"><span>Bundesaufträge, 12 Monate</span>
-      <span>${usa.anzahl_12m} · ${mrd(usa.summe_12m)} USD</span></div>
-    ${usa.letzter ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">Jüngster: ${datum(usa.letzter.datum)},
-      ${esc(usa.letzter.agentur || '')}</p>` : ''}`);
-  return `<h2 class="sec">Zusatzsignale</h2>${teile.join('')}`;
-}
-
-/* ═══════════ KANDIDATEN ═══════════ */
-function renderKandidaten(){
-  const alle = alleKandidaten();
-  const gescreent = (D.screened || 0) + (D.screened_large_cap || 0) + (D.screened_early_bets || 0);
-  const kauf = alle.filter(d => urteil(d.scorecard).k === 'go');
-  const top10 = alle.slice(0, 10);
-  const schnitt = top10.length ? top10.reduce((a, d) => a + d.scorecard.total, 0) / top10.length : null;
-
-  const bigEl = $('#markt-big');
-  bigEl.textContent = '0';
-  bigEl.dataset.count = alle.length;
-  bigEl.dataset.decimals = 0;
-  beobachte(bigEl);
-  $('#markt-lbl').innerHTML = `Kandidaten aus <b>${gescreent}</b> geprüften`;
-
-  const tage = alterTage(D.generated_at);
-  $('#stamp').innerHTML = `<b><span class="dot"></span>${datum(D.generated_at)}</b>` +
-    (tage > 9 ? `<span class="down">${tage} Tage alt</span>` : 'Datenstand');
-
-  $('#markt-tiles').innerHTML = [
-    [kauf.length, 0, 'Kaufkandidaten'], [schnitt, 1, 'Score Top 10'],
-    [alle.length, 0, 'im Register'], [gescreent, 0, 'geprüft']
-  ].map(([n, d, k]) => `<div class="tile reveal">
-      <div class="n">${n == null ? '–' : `<span data-count="${n}" data-decimals="${d}">0</span>`}</div>
-      <div class="k">${k}</div></div>`).join('');
-  beobachteGruppe($('#markt-tiles'));
-  kippbarAlle($('#markt-tiles'), '.tile');
-
-  renderEmpfehlung();
-  renderKatalog();
-  renderKorbVergleich();
-  renderKorbKarten();
-
-  const nok = D.news_sources_ok || {};
-  const qz = [
-    ['SEC EDGAR', D.edgar_used], ['Federal Register', (D.policy_acts || []).length > 0],
-    ['Fed', nok.fed], ['EZB', nok.ecb], ['BLS', nok.bls_latest],
-    ['BLS-Kalender', D.calendar_source_ok], ['EZB-Wechselkurse', !!FX]
-  ].map(([n, ok]) => `<div class="kv"><span>${n}</span>
-      <span class="${ok ? 'up' : 'down'}">${ok ? 'geliefert' : 'nicht erreichbar'}</span></div>`).join('');
-
-  $('#markt-quellen').innerHTML = qz +
-    `<div class="kv"><span>Lauf vom</span><span>${datum(D.generated_at)}, vor ${tage} Tagen</span></div>
-     <div class="kv"><span>Neu laufen lassen</span>
-       <span><span class="code">scroll.command</span> · <a href="https://github.com/${CFG.repo}" target="_blank" rel="noopener">Repo ↗</a></span></div>`;
-
-  renderUmfeld();
-}
-
-/* ───────── Vorschlag des Laufs ─────────
-   Die Kataloge zeigen drei Ranglisten nebeneinander, aber keine Antwort auf
-   die einzige Frage, die beim Hinsehen wirklich ansteht: welcher Titel wäre
-   es, wenn es genau einer sein müsste. Genau diese Auswahlregel steht auch
-   in tools/virtuell.py, das virtuelle Depot nimmt sie auf. Hier wird sie nur
-   sichtbar gemacht, gerechnet wird nichts Neues.
-
-   Ausgeschlossen wird ein Titel nur aus einem Grund: `reliable === false`,
-   also zu große Datenlücken. Ein Score aus halben Daten ist keine Auswahl,
-   sondern eine gut aussehende Zahl. */
-/* Dieselben Obergrenzen wie MAX_MARKTKAPITAL_KAUF in tools/virtuell.py. Beide
-   Stellen müssen zusammen geändert werden, sonst schlägt die Seite etwas vor,
-   das der Wochenlauf nicht kauft.
-
-   Eine einzige Grenze für alle Körbe war ein Denkfehler: Der Korb "Große
-   Werte" fängt per Definition bei zwanzig Milliarden an und lag damit immer
-   darüber, konnte also nie etwas liefern. Seit dem 20.09.2026 hat jeder Korb
-   seine eigene Grenze. Die Billion für die beiden großen Körbe ist eine
-   Setzung, keine Messung: Darüber stehen die wenigen größten Unternehmen der
-   Welt, und die erwartete Wachstumsrate fällt mit der Größe. */
-const MAX_KAP_KAUF = { klein: 20e9, gross: 1000e9, frueh: 1000e9 };
-const MAX_KAP_KAUF_STANDARD = 20e9;
-const kaufgrenze = korb => MAX_KAP_KAUF[korb] ?? MAX_KAP_KAUF_STANDARD;
-
-function spitzenJeKorb(){
-  return Object.keys(KOERBE).map(id => {
-    /* Kein Nachrücken: Ist der Beste eines Korbs zu groß, bleibt der Platz
-       leer. Der Zweitbeste ist nicht die Auswahl, die das Verfahren
-       getroffen hat, und ihn stattdessen zu nehmen wäre eine zweite,
-       unbegründete Entscheidungsregel. */
-    const bester = korbListe(id).find(d => d.scorecard && d.scorecard.reliable !== false);
-    if (!bester) return null;
-    if (bester.candidate.market_cap != null && bester.candidate.market_cap > kaufgrenze(id))
-      return {...bester, korb:id, zuGross:true};
-    return {...bester, korb:id};
-  }).filter(Boolean);
-}
-
-/* Klumpencheck, soweit er ohne entsperrtes Depot möglich ist: liegt im
-   virtuellen Depot schon ein offener Titel derselben Branche, ist der
-   nächste aus derselben Ecke dasselbe Risiko ein zweites Mal. Der volle
-   Check durch die ETF hindurch steht im Depot-Reiter, der braucht das
-   Passwort. */
-function klumpen(d){
-  if (!VP) return null;
-  const offen = (VP.positionen || []).filter(p => p.status === 'offen');
-  if (offen.some(p => p.symbol === d.candidate.symbol))
-    return {art:'drin', text:'Liegt bereits im virtuellen Depot.'};
-  const branche = d.industry || d.candidate.sector;
-  if (!branche) return null;
-  const gleiche = offen.filter(p => (p.branche || '') === branche);
-  if (!gleiche.length) return null;
-  return {art:'klumpen', text:`Im virtuellen Depot liegt bereits ${
-    gleiche.map(p => p.symbol).join(', ')} aus derselben Branche (${branche}).`};
-}
-
-function renderEmpfehlung(){
-  const el = $('#empfehlung');
-  if (!el) return;
-  const spitzen = spitzenJeKorb().sort((a, b) => b.scorecard.total - a.scorecard.total);
-  const kaufbar = spitzen.filter(d => !d.zuGross);
-  if (!kaufbar.length){
-    el.innerHTML = `<div class="card"><h3 class="gold">Diesmal kein Vorschlag</h3>
-      <p>Die besten Titel aller Körbe liegen über der Größengrenze ihres Korbs
-      und werden deshalb nicht vorgeschlagen.
-      ${spitzen.length ? 'Betroffen: ' + spitzen.map(d => esc(d.candidate.symbol)).join(', ') + '.' : ''}
-      Nichts zu tun ist ein normales Ergebnis, kein Leerlauf.</p></div>`;
-    return;
-  }
-  const erste = kaufbar[0], rest = spitzen.filter(d => d !== erste);
-  const u = urteil(erste.scorecard);
-  const K = KOERBE[erste.korb];
-  const kl = klumpen(erste);
-  const tage = alterTage(D.generated_at);
-  const tr = kaufTreiber(erste.scorecard);
-
-  el.innerHTML = `
-    <div class="card">
-      <div style="display:flex;align-items:flex-end;gap:14px">
-        <div>
-          <div style="font-size:34px;font-weight:750;letter-spacing:-.02em;line-height:1">${esc(erste.candidate.symbol)}</div>
-          <div class="muted" style="font-size:13px;margin-top:6px">${esc(erste.candidate.name)}</div>
-        </div>
-        <div style="margin-left:auto;text-align:right">
-          <div class="mono" style="font-size:26px;font-weight:750;color:var(--acc)">${nf(erste.scorecard.total, 1)}</div>
-          <div class="muted" style="font-size:11.5px">Score</div>
-        </div>
-      </div>
-      <div style="height:12px"></div>
-      <span class="tag ${u.k}">${u.t}</span>
-      <span class="tag">${esc(K.lang)}</span>
-      ${tr.map(t => `<span class="tag">${esc(KURZ[t.name] || t.name)}</span>`).join('')}
-      ${erste.trump_watch ? '<span class="tag trump">Trump-Depot</span>' : ''}
-      <div style="height:12px"></div>
-      <div class="kv"><span>Bester Titel im Korb</span><span>${esc(K.titel)}</span></div>
-      <div class="kv"><span>Kurs im Lauf</span><span>${erste.price == null ? '–' : nf(erste.price, 2) + ' USD'}</span></div>
-      <div class="kv"><span>Datenstand</span><span class="${tage > 9 ? 'gold' : ''}">${datum(D.generated_at)}, vor ${tage} Tagen</span></div>
-      ${kl ? `<p class="${kl.art === 'drin' ? 'muted' : 'gold'}" style="font-size:13px;margin:10px 0 0">${esc(kl.text)}</p>` : ''}
-      <div style="height:12px"></div>
-      <button class="btn" style="width:100%" data-empf="${esc(erste.candidate.symbol)}">Warum dieser Titel</button>
-    </div>
-    <div class="card">
-      <h3>Auch oben, je einer aus den anderen Körben</h3>
-      ${rest.map(d => `<div class="kv"><span>${esc(d.candidate.symbol)} · ${esc(KOERBE[d.korb].titel)}</span>
-        <span>${d.zuGross ? `<span class="muted">${mrd(d.candidate.market_cap)}, zu groß</span> · ` : ''}${nf(d.scorecard.total, 1)}</span></div>`).join('') ||
-        '<p class="muted">Kein weiterer Korb mit belastbaren Daten.</p>'}
-      <p class="muted" style="font-size:12.5px;margin:10px 0 0">Ins virtuelle Depot wandern
-      nur Titel unter ${mrd(MAX_KAP_KAUF)}, jeder mit 1.000 Euro abzüglich Kosten. Ob sich
-      echtes Geld lohnt, entscheidet nicht dieses Depot, sondern die Messung über alle
-      Kandidaten im Reiter Verlauf: Sie braucht Wochen statt Jahre.</p>
-    </div>`;
-
-  const knopf = el.querySelector('[data-empf]');
-  if (knopf) knopf.onclick = () => {
-    sheet(detail(erste));
-    bindKaufFormular($('#sheet-body'), erste);
-  };
-}
-
-/* Kategorien, App-Store-artig: Überschrift, fünf Plätze, alle anzeigen. */
-function renderKatalog(){
-  $('#katalog').innerHTML = Object.entries(KOERBE).map(([id, K]) => {
-    const list = korbListe(id), n = gezeigt[id];
-    const rest = list.length - n;
-    const rej = D[K.r] || [];
-    return `<section class="kat ${K.cls}" id="kat-${id}">
-      <div class="kat-kopf">
-        <span class="kat-farbe"></span>
-        <div>
-          <h3>${esc(K.titel)}</h3>
-          <p>${esc(K.unter)} · ${list.length} Kandidaten</p>
-        </div>
-        <button class="kat-alle" data-alle="${id}">Alle ›</button>
-      </div>
-      <div class="card" data-liste="${id}">${
-        list.length ? list.slice(0, n).map((d, i) => zeile(d, i)).join('')
-                    : '<p class="muted">Keine Kandidaten in diesem Korb.</p>'}</div>
-      ${rest > 0 ? `<button class="mehr" data-mehr="${id}">Weitere ${Math.min(5, rest)} anzeigen
-        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-      </button>` : ''}
-      ${rej.length ? `<button class="ausgeschieden" data-warum="${id}">
-        <b>${rej.length}</b> ausgeschieden ›</button>` : ''}
-    </section>`;
-  }).join('');
-
-  Object.keys(KOERBE).forEach(id =>
-    bindRows($(`[data-liste="${id}"]`), korbListe(id)));
-  $$('#katalog .mehr').forEach(b => b.onclick = () => {
-    gezeigt[b.dataset.mehr] += 5; renderKatalog();
-  });
-  $$('#katalog .kat-alle').forEach(b => b.onclick = () => {
-    gezeigt[b.dataset.alle] = korbListe(b.dataset.alle).length; renderKatalog();
-  });
-  $$('#katalog .ausgeschieden').forEach(b => b.onclick = () => warumSheet(b.dataset.warum));
-}
-
-/* Rein darstellende Zusammenfassung je Korb, additiv zu den bestehenden
-   Listen: kein neuer Rechenweg, nur Durchschnitt und Bestenwert aus den
-   ohnehin vorhandenen Scorecards. Speist die dunkle Vergleichs-Sektion
-   ("Score je Korb") und die abschließenden Vergleichskarten. */
-function korbKennzahlen(id){
-  const list = korbListe(id);
-  if (!list.length) return {id, K:KOERBE[id], n:0, schnitt:null, kauf:0, bester:null};
-  const schnitt = list.reduce((s, d) => s + d.scorecard.total, 0) / list.length;
-  const kauf = list.filter(d => urteil(d.scorecard).k === 'go').length;
-  return {id, K:KOERBE[id], n:list.length, schnitt, kauf, bester:list[0]};
-}
-
-function renderKorbVergleich(){
-  const el = $('#korb-vergleich');
-  if (!el) return;
-  const zeilen = Object.keys(KOERBE).map(korbKennzahlen);
-  const max = Math.max(1, ...zeilen.map(z => z.schnitt || 0));
-  el.innerHTML = zeilen.map(z => `
-    <div class="compare-row reveal" data-w="${z.schnitt ? Math.max(3, z.schnitt / max * 100) : 0}">
-      <div class="compare-top">
-        <span class="compare-label">${esc(z.K.titel)}</span>
-        <span class="compare-sub">${esc(z.K.unter)} · ${z.n} Kandidaten</span>
-        <span class="compare-num"${z.schnitt == null ? '' : ` data-count="${z.schnitt}" data-decimals="1"`}>${z.schnitt == null ? '–' : '0,0'}</span>
-      </div>
-      <div class="compare-track"><span class="compare-fill ${z.K.cls}"></span></div>
-    </div>`).join('');
-  beobachteAlle(el, '.compare-row');
-}
-
-function renderKorbKarten(){
-  const el = $('#korb-karten');
-  if (!el) return;
-  el.innerHTML = Object.keys(KOERBE).map(korbKennzahlen).map(z => `
-    <div class="compare-card reveal ${z.K.cls}">
-      <span class="cc-farbe"></span>
-      <h4>${esc(z.K.titel)}</h4>
-      <div class="cc-unter">${esc(z.K.unter)}</div>
-      <div class="cc-num" data-count="${z.n}">0</div>
-      <div class="cc-lbl">Kandidaten im Register</div>
-      <div class="cc-kv"><span>Ø Score</span><b>${nf(z.schnitt, 1)}</b></div>
-      <div class="cc-kv"><span>Kaufkandidaten</span><b>${z.kauf}</b></div>
-      <div class="cc-kv"><span>Bester</span><b>${z.bester ? esc(z.bester.candidate.symbol) : '–'}</b></div>
-    </div>`).join('');
-  beobachteGruppe(el);
-  kippbarAlle(el, '.compare-card');
-}
-
-/* Warum ein Titel im jeweiligen Korb ausgeschieden ist. Früher eine eigene
-   Ansicht ("Screening"), jetzt ein Detailblatt, weil es Beleg ist und keine
-   eigene Bestimmung. */
-function warumSheet(id){
-  const K = KOERBE[id], rej = D[K.r] || [];
-  const g = {};
-  rej.forEach(r => (g[r.reason] = (g[r.reason] || 0) + 1));
-  const zeilen = Object.entries(g).sort((a, b) => b[1] - a[1])
-    .map(([k, n]) => `<div class="kv"><span>${esc(label(GRUND, k))}</span><span>${n}</span></div>`).join('');
-  sheet(`<h2 class="sec">Ausgeschieden · ${esc(K.titel)}</h2>${zeilen || '<p class="muted">Nichts ausgeschieden.</p>'}
-    <div style="height:10px"></div>
-    <button class="btn ghost" style="width:100%" data-close>Schließen</button>`);
-}
-
-/* ═══════════ MARKTUMFELD (früher eigener Tab "Makro") ═══════════ */
-function renderUmfeld(){
-  const acts = D.policy_acts || [];
-  const felder = [...new Set(acts.flatMap(a => a.fields || []))].sort();
-  $('#policy-chips').innerHTML =
-    `<button class="chip ${policyField === '*' ? 'on' : ''}" data-f="*">Alle ${acts.length}</button>` +
-    felder.map(f => `<button class="chip ${policyField === f ? 'on' : ''}" data-f="${esc(f)}">${esc(label(FELD, f))}</button>`).join('');
-  $$('#policy-chips .chip').forEach(b => b.onclick = () => { policyField = b.dataset.f; renderUmfeld(); });
-
-  const shown = (policyField === '*' ? acts : acts.filter(a => (a.fields || []).includes(policyField)))
-    .sort((a, b) => (b.publication_date || '').localeCompare(a.publication_date || '')).slice(0, 24);
-
-  $('#policy-list').innerHTML = `<h3>Rechtsakte</h3>` + (shown.length ? shown.map(a => `
-    <div class="row">
-      <a href="${esc(a.url)}" target="_blank" rel="noopener"
-         style="font-size:14.5px;line-height:1.4;display:block">${esc(a.title)}</a>
-      <span class="nm" style="white-space:normal;margin-top:5px">${datum(a.publication_date)}${
-        (a.countries || []).length ? ' · ' + esc(a.countries.join(', ')) : ''}</span>
-      <span class="tags">${(a.sectors || []).slice(0, 4).map(s => `<span class="tag">${esc(s)}</span>`).join('')}</span>
-    </div>`).join('') : '<p class="muted">Nichts in diesem Feld.</p>');
-
-  const news = D.news_items || [];
-  $('#news-list').innerHTML = `<h3>Notenbanken und Statistik</h3>` + (news.length ? news.slice(0, 16).map(n => `
-    <div class="row">
-      <a href="${esc(n.url)}" target="_blank" rel="noopener"
-         style="font-size:14.5px;line-height:1.4;display:block">${esc(n.title)}</a>
-      <span class="nm" style="margin-top:5px"><span class="acc">${esc(QUELLE[n.source] || n.source)}</span>
-        · ${datum(n.published)}</span>
-    </div>`).join('') : '<p class="muted">Keine Meldungen abrufbar.</p>');
-
-  const cal = D.calendar_events || [];
-  $('#cal-list').innerHTML = `<h3>Termine</h3>` + (cal.length
-    ? cal.map(c => `<div class="kv"><span>${esc(c.title)}</span><span>${datum(c.start)}</span></div>`).join('')
-    : '<p class="muted">Kalender nicht erreichbar.</p>');
-}
-
-/* ═══════════ VERLAUF ═══════════ */
-function isoWoche(d){
-  const t = new Date(d + 'T12:00:00Z');
-  const tag = t.getUTCDay() || 7;
-  t.setUTCDate(t.getUTCDate() + 4 - tag);
-  const j0 = Date.UTC(t.getUTCFullYear(), 0, 1);
-  return t.getUTCFullYear() * 100 + Math.ceil(((t - j0) / 864e5 + 1) / 7);
-}
-const monatKey = d => d.slice(0, 7);
-const monatName = k => new Date(k + '-15T12:00:00Z')
-  .toLocaleDateString('de-DE', {month:'long', year:'numeric'});
-
-/* Rechnet einen Eintrag in Euro um und trennt Kurs- von Währungseffekt.
-   Bevorzugt die im Lauf selbst gespeicherten Kurse (fx_at_entry/fx_now):
-   die sind exakt der Stand des jeweiligen Laufs, keine Näherung über das
-   Kalenderdatum. Nur Einträge von vor dieser Funktion haben diese Felder
-   nicht, dafür bleibt die Live-EZB-Abfrage als Rückfallebene. */
-function inEuro(e, standDatum){
-  const kEin = e.fx_at_entry ?? kursAm(iso(e.date));
-  const kJetzt = e.fx_now ?? kursJetzt() ?? kursAm(standDatum);
-  if (!kEin || !kJetzt) return null;
-  const ein = e.price_at_entry * kEin, jetzt = (e.price_now ?? e.price_at_entry) * kJetzt;
-  return {
-    ein, jetzt,
-    rendite: (jetzt / ein - 1) * 100,
-    fx: (kJetzt / kEin - 1) * 100
-  };
-}
-
-function renderHistorie(){
-  const ts = D.track_summary || {}, tr = D.track_record || [];
-  const stand = iso(D.generated_at);
-  const w = ts.weeks || 0, need = (ts.weeks_needed || 0) + w || 12;
-
-  const euros = tr.map(e => inEuro(e, stand)).filter(Boolean);
-  const med = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y);
-    const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
-  const medEur = med(euros.map(x => x.rendite));
-  const medFx  = med(euros.map(x => x.fx));
-
-  $('#hist-hero').innerHTML = `
-    <div class="card">
-      <div style="display:flex;align-items:flex-end;gap:16px">
-        <div>
-          <div class="mono ${sign(medEur)}" style="font-size:40px;font-weight:750;letter-spacing:-.02em;line-height:1">
-            ${pct(medEur)}</div>
-          <div class="muted" style="font-size:12px;margin-top:6px">Median in Euro</div>
-        </div>
-        <div style="margin-left:auto;text-align:right">
-          <div class="mono ${sign(ts.median_excess_pct)}" style="font-size:21px;font-weight:650">${pct(ts.median_excess_pct)}</div>
-          <div class="muted" style="font-size:11.5px">gegen ${esc(ts.benchmark_symbol || 'IWO')}</div>
-        </div>
-      </div>
-      <div style="height:14px"></div>
-      <div class="kv"><span>Positionen</span><span>${ts.entries ?? 0}</span></div>
-      <div class="kv"><span>Trefferquote</span><span>${nf(ts.hit_rate_pct, 0)} %</span></div>
-      <div class="kv"><span>davon Währungseffekt</span>
-        <span class="${sign(medFx)}">${pct(medFx, 2)}</span></div>
-      <div class="kv"><span>Wechselkurs am Stand</span>
-        <span>${kursJetzt() ? '1 USD = ' + nf(kursJetzt(), 4) + ' €' : 'nicht geladen'}</span></div>
-      <div class="kv"><span>Datenbasis</span>
-        <span class="${ts.meaningful ? '' : 'gold'}">${w} von ${need} Kalenderwochen</span></div>
-      <div class="bar" style="margin-top:12px"><i style="--w:${Math.min(100, w / need * 100)}%"></i></div>
-    </div>
-    <div class="card">
-      <h3>Was hier gerechnet wird</h3>
-      <p>Einstand und Stand werden mit dem EZB-Referenzkurs des jeweiligen Tages in Euro
-      umgerechnet, weil in Euro gehandelt wird. Der Währungsanteil steht oben getrennt,
-      sonst würde eine Dollarschwäche wie ein schlechter Pick aussehen. Der Vergleich
-      gegen ${esc(ts.benchmark_name || 'IWO')} bleibt in Dollar, damit er den
-      Währungseffekt nicht doppelt zählt. Unter ${need} Kalenderwochen ist die Kennzahl
-      ausdrücklich Rauschen, keine Aussage.</p>
-    </div>`;
-
-  const vergleichEl = $('#hist-vergleich');
-  if (vergleichEl){
-    const rows = [
-      {lbl:'Portfolio, Median in Euro', v:medEur},
-      {lbl:`Überrendite gegen ${esc(ts.benchmark_symbol || 'IWO')}`, v:ts.median_excess_pct}
-    ];
-    const max = Math.max(10, ...rows.map(r => Math.abs(r.v || 0)));
-    vergleichEl.innerHTML = rows.map(r => `
-      <div class="compare-row reveal" data-w="${r.v == null ? 0 : Math.max(3, Math.min(100, Math.abs(r.v) / max * 100))}">
-        <div class="compare-top">
-          <span class="compare-label">${r.lbl}</span>
-          <span class="compare-num ${sign(r.v)}"${r.v == null ? '' : ` data-count="${r.v}" data-decimals="1" data-fmt="pct"`}>${r.v == null ? pct(r.v) : pct(0)}</span>
-        </div>
-        <div class="compare-track"><span class="compare-fill ${sign(r.v)}"></span></div>
-      </div>`).join('');
-    beobachteAlle(vergleichEl, '.compare-row');
-  }
-
-  $('#hist-chips').innerHTML = [['woche', 'Wochen'], ['monat', 'Monate']]
-    .map(([k, t]) => `<button class="chip ${histRaster === k ? 'on' : ''}" data-r="${k}">${t}</button>`).join('');
-  $$('#hist-chips .chip').forEach(b => b.onclick = () => { histRaster = b.dataset.r; renderHistorie(); });
-
-  if (!tr.length){ $('#hist-liste').innerHTML =
-    '<div class="card"><p class="muted">Noch keine Positionen eingefroren.</p></div>'; return; }
-
-  const gruppen = {};
-  tr.forEach(e => {
-    const d = iso(e.date);
-    const k = histRaster === 'woche' ? isoWoche(d) : monatKey(d);
-    (gruppen[k] ||= {key:k, von:d, bis:d, eintraege:[]});
-    const g = gruppen[k];
-    g.eintraege.push(e);
-    if (d < g.von) g.von = d;
-    if (d > g.bis) g.bis = d;
-  });
-
-  const sortiert = Object.values(gruppen).sort((a, b) => String(a.key).localeCompare(String(b.key)));
-
-  $('#hist-liste').innerHTML = sortiert.map((g, i) => {
-    const nachKorb = {};
-    [...g.eintraege].sort((a, b) => (a.rank || 99) - (b.rank || 99)).forEach(e => {
-      const kb = e.korb || korbVon(e.symbol) || 'klein';
-      (nachKorb[kb] ||= []).push(e);
-    });
-
-    const koerbeHtml = Object.keys(KOERBE).filter(kb => nachKorb[kb]?.length).map(kb => {
-      const K = KOERBE[kb], top = nachKorb[kb].slice(0, 3);
-      const bmSym = top[0]?.benchmark_symbol || 'IWO';
-      const bmEin = top[0]?.benchmark_at_entry;
-      const bmRet = top[0]?.benchmark_return_pct;
-
-      const posHtml = top.map(e => {
-        const E = inEuro(e, stand);
-        const jetzt = E ? eur(E.jetzt) : nf(e.price_now ?? e.price_at_entry, 2) + ' $';
-        const ein   = E ? eur(E.ein)   : nf(e.price_at_entry, 2) + ' $';
-        const delta = E ? E.rendite : e.return_pct;
-        return `<div class="pos">
-          <span class="pos-mitte">
-            <span class="pos-top">
-              <span class="sym">${esc(e.symbol)}</span>
-              <span class="jetzt">${jetzt}</span>
-            </span>
-            <span class="pos-sub">
-              <span class="nm">${esc(e.name || '')}</span>
-              <span class="delta ${sign(delta)}">${pct(delta)}</span>
-            </span>
-            <span class="ein">Einstand ${ein} am ${datum(e.date)} · Score ${nf(e.score_at_entry, 1)}</span>
-          </span>
-        </div>`;
-      }).join('');
-
-      return `<div class="korb-block">
-        <div class="korb-kopf">
-          <span class="korb ${K.cls}">${K.kurz}</span>
-          <span class="korb-titel">${esc(K.titel)}</span>
-          <span class="korb-bm">${esc(BENCHMARK_KURZ[bmSym] || bmSym)}
-            ${bmEin != null ? nf(bmEin, 2) : '–'}${bmRet != null ? ' · ' + pct(bmRet) : ''}</span>
-        </div>
-        ${posHtml}
-      </div>`;
-    }).join('');
-
-    return `<div class="woche">
-      <div class="woche-kopf">
-        <span class="woche-nr">${histRaster === 'woche' ? 'WOCHE ' + (i + 1) : monatName(g.key).toUpperCase()}</span>
-        <span class="woche-dat">${g.von === g.bis ? datum(g.von) : datum(g.von) + ' bis ' + datum(g.bis)}</span>
-      </div>
-      <div class="woche-koerper">${koerbeHtml}</div>
-    </div>`;
-  }).reverse().join('');
-}
-
-/* ═══════════ KANTE: hat der Score Vorhersagekraft ═══════════
-   Liest data/score_register.json, das tools/register.py schreibt.
-
-   Warum das die wichtigste Ansicht der ganzen Seite ist: Ein Depot aus wenigen
-   Positionen braucht Jahre, bis sich Können von Zufall trennen lässt. Jeder
-   Datenlauf bewertet dagegen rund siebzig Kandidaten. Die Frage "korreliert
-   der Score mit der späteren Rendite" lässt sich über alle siebzig
-   gleichzeitig beantworten, und damit rund zwanzigmal schneller.
-
-   Gerechnet wird nichts davon hier. Die Seite zeigt nur, was in der Datei
-   steht, damit dieselbe Zahl nicht an zwei Stellen in zwei Sprachen entsteht
-   und auseinanderläuft. */
-let REG = null, icHorizont = '30';
-
-/* Korrelationen mit Vorzeichen, aber ohne das irreführende "-0,000":
-   Ein Wert, der auf drei Stellen gerundet null ist, soll auch null aussehen. */
-function ic(v, stellen = 3){
-  if (v == null) return '–';
-  const w = Math.abs(v) < 0.5 / Math.pow(10, stellen) ? 0 : v;
-  return (w > 0 ? '+' : '') + nf(w, stellen);
-}
-
-/* Einordnung des Information Coefficient. Die Grenzen sind die in der
-   quantitativen Praxis üblichen Daumenwerte, keine gemessenen Schwellen.
-   Wichtig ist vor allem, dass 0,04 hier nicht wie "praktisch null" aussieht:
-   ein IC von 0,03 bis 0,05, der über viele Wochen hält, ist ein real
-   nutzbarer Vorsprung. Umgekehrt ist ein IC von 0,3 aus fünf Wochen kein
-   Fund, sondern fast immer Zufall. */
-function icUrteil(ic, t, belastbar){
-  if (ic == null) return {t:'noch keine Auswertung', k:'warn',
-    text:'Es liegt noch kein Lauf vor, dessen Stichtag erreicht ist.'};
-  if (!belastbar) return {t:'noch Rauschen', k:'warn',
-    text:'Zu wenige unabhängige Wochen. Die Zahl steht hier, damit man sie wachsen sieht, nicht damit man ihr glaubt.'};
-  if (t != null && Math.abs(t) < 2) return {t:'kein Zusammenhang messbar', k:'low',
-    text:'Der mittlere Zusammenhang ist mit null vereinbar. Das ist ein Ergebnis, kein Fehler.'};
-  if (ic >= 0.08) return {t:'deutlicher Zusammenhang', k:'go',
-    text:'Für ein Einzelmerkmal ein starker Wert. Vor einer Umstellung auf echtes Geld an einer zweiten Stichprobe prüfen.'};
-  if (ic >= 0.03) return {t:'schwacher, aber nutzbarer Zusammenhang', k:'go',
-    text:'In der quantitativen Praxis der Bereich, in dem ein Verfahren tatsächlich Geld verdient, sofern die Kosten darunter bleiben.'};
-  if (ic > 0) return {t:'Zusammenhang zu klein', k:'low',
-    text:'Positiv, aber kleiner als die Handelskosten. Damit ist er nicht nutzbar.'};
-  return {t:'Zusammenhang negativ', k:'warn',
-    text:'Der Score ordnet in die falsche Richtung. Wenn das hält, ist das die wertvollste Information dieser Seite.'};
-}
-
-function kanteChips(){
-  const el = $('#kante-chips');
-  if (!el) return;
-  el.innerHTML = (REG?.horizonte || [30, 60, 90]).map(h =>
-    `<button class="chip ${icHorizont === String(h) ? 'on' : ''}" data-h="${h}">${h} Tage</button>`).join('');
-  $$('#kante-chips .chip').forEach(b => b.onclick = () => { icHorizont = b.dataset.h; renderKante(); });
-}
-
-function renderKante(){
-  const el = $('#kante'), kEl = $('#kante-komponenten');
-  if (!el) return;
-  if (!REG){
-    el.innerHTML = `<div class="card"><p class="muted">data/score_register.json
-      ist nicht erreichbar. Der erste Wochenlauf legt die Datei an.</p></div>`;
-    if (kEl) kEl.innerHTML = '';
-    return;
-  }
-  kanteChips();
-
-  const z = (REG.zusammenfassung || {})[icHorizont] || {};
-  const laeufe = REG.laeufe || [];
-  const kandidaten = laeufe.reduce((a, l) => a + (l.kandidaten || []).length, 0);
-  const noetig = REG.min_wochen || 12;
-  const u = icUrteil(z.ic_mittel, z.t, z.belastbar);
-  const fehlend = laeufe.reduce((a, l) => {
-    const x = (l.auswertung || {})[icHorizont];
-    return a + (x && x.fehlend ? x.fehlend : 0); }, 0);
-
-  el.innerHTML = `
-    <div class="card">
-      <div style="display:flex;align-items:flex-end;gap:16px">
-        <div>
-          <div class="mono ${sign(z.ic_mittel)}" style="font-size:40px;font-weight:750;letter-spacing:-.02em;line-height:1">
-            ${ic(z.ic_mittel)}</div>
-          <div class="muted" style="font-size:12px;margin-top:6px">Rangkorrelation Score zu Rendite</div>
-        </div>
-        <div style="margin-left:auto;text-align:right">
-          <div class="mono" style="font-size:21px;font-weight:650">${z.t == null ? '–' : nf(z.t, 2)}</div>
-          <div class="muted" style="font-size:11.5px">t-Wert</div>
-        </div>
-      </div>
-      <div style="height:12px"></div>
-      <span class="tag ${u.k}">${u.t}</span>
-      <p class="muted" style="font-size:13px;margin:10px 0 0">${u.text}</p>
-      <div style="height:12px"></div>
-      <div class="kv"><span>Unabhängige Wochen</span>
-        <span class="${z.belastbar ? '' : 'gold'}">${z.wochen || 0} von ${noetig}</span></div>
-      <div class="kv"><span>Ausgewertete Läufe</span><span>${z.laeufe || 0} von ${laeufe.length}</span></div>
-      ${z.laeufe_andere_fassung ? `<div class="kv"><span>Aus älterer Score-Fassung</span>
-        <span class="gold">${z.laeufe_andere_fassung} nicht gezählt</span></div>` : ''}
-      <div class="kv"><span>Beobachtete Kandidaten</span><span>${kandidaten}</span></div>
-      <div class="kv"><span>Wochen mit positivem Wert</span><span>${z.positive_wochen || 0} von ${z.wochen || 0}</span></div>
-      <div class="kv"><span>Bestes gegen schlechtestes Drittel</span>
-        <span class="${sign(z.terzil_abstand_mittel)}">${pct(z.terzil_abstand_mittel)}</span></div>
-      <div class="kv"><span>Ohne Kurs am Stichtag</span>
-        <span class="${fehlend > kandidaten * 0.1 ? 'gold' : ''}">${fehlend}</span></div>
-      <div class="bar" style="margin-top:12px"><i data-w="${Math.min(100, (z.wochen || 0) / noetig * 100)}"></i></div>
-    </div>
-    <div class="card">
-      <h3>Was hier gerechnet wird</h3>
-      <p>Bei jedem Datenlauf wird <b>jeder</b> bewertete Kandidat mit seinem Score und
-      seinem Kurs eingefroren, nicht nur die Spitze. ${icHorizont} Kalendertage später
-      wird jede Rendite um die des passenden Vergleichsindex bereinigt und geprüft, ob
-      die Rangfolge nach Score zur Rangfolge nach Rendite passt. Plus eins hieße perfekt,
-      null hieße kein Zusammenhang.</p>
-      <p>Gezählt werden nur Läufe <b>derselben Score-Fassung</b>. Ändert sich eine
-      Komponente oder ein Gewicht, beginnt die Zählung von vorn. Das ist unbequem,
-      aber ein Mittelwert über zwei verschiedene Verfahren beschreibt keines von
-      beiden und sieht dabei genauso seriös aus wie ein richtiger.</p>
-      <p>Gezählt werden <b>Kalenderwochen, nicht Läufe</b>. Drei Läufe an drei
-      aufeinanderfolgenden Tagen messen fast dieselbe Kohorte im fast selben Markt und
-      werden zu einer Beobachtung gemittelt. Titel ohne Kurs am Stichtag sind meist
-      delistet, also überwiegend schlechte Fälle; sie fallen aus der Rechnung und werden
-      deshalb oben ausdrücklich mitgezählt.</p>
-    </div>`;
-  beobachte($('#kante .bar')?.parentElement || $('#kante .card'));
-  aktiviereBalken(el);
-
-  /* Komponententabelle. Das ist die Zahl, die eine Änderung an den Gewichten
-     überhaupt erst begründen kann: Sie sagt je Komponente einzeln, ob sie
-     etwas vorhersagt oder nur Gewicht verbraucht. */
-  if (!kEl) return;
-  const komp = z.komponenten || {};
-  const namen = Object.keys(komp);
-  if (!namen.length){
-    kEl.innerHTML = `<div class="card"><p class="muted">Noch keine Komponente
-      ausgewertet. Der erste Stichtag muss erreicht sein.</p></div>`;
-    return;
-  }
-  const gewichte = (laeufe[laeufe.length - 1] || {}).gewichte || {};
-  const maxIc = Math.max(0.02, ...namen.map(n => Math.abs(komp[n].ic_mittel || 0)));
-  kEl.innerHTML = `<div class="card">
-    ${namen.sort((a, b) => (komp[b].ic_mittel || 0) - (komp[a].ic_mittel || 0)).map(n => {
-      const c = komp[n], w = gewichte[n];
-      return `<div class="row reveal" style="cursor:default">
-        <span class="rhead">
-          <span class="sym">${esc(KURZ[n] || KOMPONENTE[n] || n)}</span>
-          <span class="score mono ${sign(c.ic_mittel)}">${ic(c.ic_mittel)}</span>
-        </span>
-        <span class="nm">${w != null ? w + ' % Gewicht' : 'Gewicht unbekannt'} ·
-          ${c.wochen} Woche${c.wochen === 1 ? '' : 'n'} · t ${c.t == null ? '–' : nf(c.t, 2)}</span>
-        <span class="bar ${c.ic_mittel > 0 ? 'g' : c.ic_mittel < 0 ? 'r' : ''}">
-          <i data-w="${Math.max(2, Math.min(100, Math.abs(c.ic_mittel || 0) / maxIc * 100))}"></i></span>
-      </div>`;
-    }).join('')}
-    <p class="muted" style="font-size:12.5px;margin:12px 0 0">Eine Komponente mit
-    hohem Gewicht und einem Wert nahe null verbraucht Gewicht, ohne etwas beizutragen.
-    Solange die Spalte Wochen unter ${noetig} steht, ist das aber kein Befund, sondern
-    eine Momentaufnahme.</p>
-  </div>`;
-  beobachteAlle(kEl, '.row');
-}
-
-
-/* ───────── Rückrechnung ─────────
-   Zeigt data/backtest.json, das tools/backtest.py auf Knopfdruck erzeugt.
-
-   Wichtig für die Einordnung: Das ist NICHT die Rückrechnung des ganzen
-   Scores. Nur die kursbasierten Merkmale lassen sich ohne weiteres punktgenau
-   rekonstruieren, weil ein Schlusskurs von gestern gestern bekannt war. Der
-   Fundamentalteil bräuchte den Meldestand jedes Stichtags aus EDGAR, und die
-   Analystenrevisionen sind grundsätzlich nicht rekonstruierbar. */
-let BT = null;
-
-function renderBacktest(){
-  const el = $('#backtest');
-  if (!el) return;
-  if (!BT || !BT.merkmale){
-    el.innerHTML = `<div class="card">
-      <p class="muted">Noch nicht gelaufen. Die Rückrechnung startet auf Knopfdruck
-      und braucht ein paar Minuten.</p>
-      <div style="height:8px"></div>
-      <div class="kv"><span>Rückrechnung starten</span>
-        <span><a href="https://github.com/${CFG.repo}/actions/workflows/backtest.yml"
-          target="_blank" rel="noopener">Bei GitHub ↗</a></span></div></div>`;
-    return;
-  }
-  const m = BT.merkmale.momentum_12_1 || {}, u = BT.merkmale.umkehr_1m || {};
-  const u2 = icUrteil(m.ic_mittel, m.t, m.belastbar);
-  el.innerHTML = `
-    <div class="card">
-      <div style="display:flex;align-items:flex-end;gap:16px">
-        <div>
-          <div class="mono ${sign(m.ic_mittel)}" style="font-size:36px;font-weight:750;letter-spacing:-.02em;line-height:1">
-            ${ic(m.ic_mittel)}</div>
-          <div class="muted" style="font-size:12px;margin-top:6px">Kursmomentum, mittlerer IC</div>
-        </div>
-        <div style="margin-left:auto;text-align:right">
-          <div class="mono" style="font-size:21px;font-weight:650">${m.t == null ? '–' : nf(m.t, 2)}</div>
-          <div class="muted" style="font-size:11.5px">t-Wert</div>
-        </div>
-      </div>
-      <div style="height:12px"></div>
-      <span class="tag ${u2.k}">${u2.t}</span>
-      <div style="height:12px"></div>
-      <div class="kv"><span>Überlappungsfreie Stichtage</span>
-        <span class="${m.belastbar ? '' : 'gold'}">${m.stichtage || 0} von ${BT.min_stichtage}</span></div>
-      <div class="kv"><span>Stichtage mit positivem Wert</span>
-        <span>${m.positive_stichtage || 0} von ${m.stichtage || 0}</span></div>
-      <div class="kv"><span>Bestes gegen schlechtestes Drittel</span>
-        <span class="${sign(m.terzil_abstand_mittel)}">${pct(m.terzil_abstand_mittel)}</span></div>
-      <div class="kv"><span>Titel im Suchraum</span><span>${BT.titel}</span></div>
-      <div class="kv"><span>Haltedauer je Stichtag</span><span>${BT.haltedauer_tage} Tage</span></div>
-      <div class="kv"><span>Gegenprobe Kurzfrist-Umkehr</span>
-        <span class="${BT.gegenprobe_bestanden ? 'up' : 'gold'}">${
-          ic(u.ic_mittel)}${
-          BT.gegenprobe_bestanden === true ? ' · bestanden'
-          : BT.gegenprobe_bestanden === false ? ' · nicht bestanden' : ''}</span></div>
-      <div class="kv"><span>Stand</span><span>${datum(BT.updated_at)}</span></div>
-    </div>
-    <div class="card">
-      <h3>Was diese Zahl kann und was nicht</h3>
-      <p>Geprüft ist nur der <b>kursbasierte</b> Teil des Scores. Kurse sind die einzigen
-      Daten, die ohne Weiteres punktgenau sind: ein Schlusskurs von gestern war gestern
-      bekannt. Der Fundamentalteil bräuchte für jeden Stichtag den Meldestand aus EDGAR,
-      und die Analystenrevisionen liefert Yahoo grundsätzlich nur im heutigen Stand.
-      Wer heutige Revisionen auf vergangene Kurse legt, misst die Zukunft.</p>
-      <p>Die Stichtage liegen genau eine Haltedauer auseinander, damit dieselbe
-      Kursbewegung nicht mehrfach gezählt wird. Die <b>Gegenprobe</b> prüft, ob die
-      Kurzfrist-Umkehr wie in der Literatur das umgekehrte Vorzeichen hat: kommt sie mit
-      demselben Vorzeichen heraus, misst der Aufbau einen Fehler in der Mechanik und
-      nicht die Merkmale.</p>
-      <p class="muted" style="font-size:12.5px">${esc(BT.vorbehalt || '')} Delistete
-      Firmen hätten fast immer schwaches Momentum und schwache Folgerendite gehabt, sie
-      fehlen also überwiegend dort, wo das Merkmal recht gehabt hätte. Die gemessene
-      Kante ist damit eher eine Untergrenze.</p>
-    </div>`;
-}
-
-/* ═══════════ VIRTUELLES DEPOT ═══════════
-   Liest data/virtual_portfolio.json, das ein woechentlicher GitHub-Actions-
-   Lauf schreibt (tools/virtuell.py). Die Seite rechnet hier bewusst nichts
-   nach: Rendite, Ueberrendite und Waehrungseffekt stehen fertig in der
-   Datei, damit dieselbe Zahl nicht an zwei Stellen in zwei Sprachen
-   entsteht und auseinanderlaeuft.
-
-   Zwei Quellen, ein Depot: `score` sind die Titel, die der Datenlauf als
-   Bester seines Korbs ausgeworfen hat, `trump` sind die, zu denen Trump
-   oeffentlich geraten hat. Getrennt ausgewiesen, weil sonst hinterher
-   niemand sagen kann, welcher Teil die Rendite getragen hat. */
-let VP = null, virtFilter = '*';
-
-const VQ = {
-  score: {kurz:'D', lang:'Datenauswahl', cls:''},
-  trump: {kurz:'T', lang:'Trump',        cls:'f'}
-};
-
-function virtPositionen(){
-  const alle = (VP?.positionen || []).slice();
-  const f = virtFilter;
-  const gefiltert = f === '*' ? alle
-    : f === 'zu' ? alle.filter(p => p.status !== 'offen')
-    : alle.filter(p => p.quelle === f);
-  /* Nach Rendite sortiert, Positionen ohne Kurs ans Ende: eine Zeile ohne
-     Zahl oben waere die auffaelligste Stelle der Liste und sagt nichts. */
-  return gefiltert.sort((a, b) => {
-    const av = a.rendite_pct, bv = b.rendite_pct;
-    if (av == null && bv == null) return 0;
-    if (av == null) return 1;
-    if (bv == null) return -1;
-    return bv - av;
-  });
-}
-
-function virtZeile(p, maxAbs){
-  const Q = VQ[p.quelle] || VQ.score;
-  const K = p.korb ? KOERBE[p.korb] : null;
-  const r = p.rendite_pct;
-  /* Der Balken ist relativ zur groessten Auslenkung der gerade gezeigten
-     Liste skaliert, nicht gegen eine erfundene feste Spanne. Ein Balken mit
-     willkuerlichem Massstab sieht nach Information aus und ist keine. */
-  const breite = r == null ? 2 : Math.max(3, Math.min(100, Math.abs(r) / maxAbs * 100));
-  return `<button class="row reveal" data-vid="${esc(p.id)}">
-    <span class="rhead">
-      <span class="korb ${Q.cls}">${Q.kurz}</span>
-      <span class="sym">${esc(p.symbol)}</span>
-      <span class="score mono ${sign(r)}">${r == null ? '–' : pct(r)}</span>
-      <span class="chev">›</span>
-    </span>
-    <span class="nm">${esc(p.name || p.symbol)} · seit ${datum(p.opened)}${
-      p.tage != null ? ' · ' + p.tage + ' Tage' : ''}</span>
-    <span class="bar ${r > 0 ? 'g' : r < 0 ? 'r' : ''}"><i data-w="${breite}"></i></span>
-    <span class="tags">
-      <span class="tag">${Q.lang}</span>
-      ${K ? `<span class="tag">${esc(K.titel)}</span>` : ''}
-      ${p.excess_netto_pct != null ? `<span class="tag ${p.excess_netto_pct > 0 ? 'go' : 'low'}">${
-        pct(p.excess_netto_pct)} gegen ${esc(BENCHMARK_KURZ[p.benchmark_symbol] || p.benchmark_symbol)}</span>` : ''}
-      ${p.status !== 'offen' ? `<span class="tag">${esc(p.schliessgrund || 'geschlossen')}</span>` : ''}
-      ${p.veraltet ? '<span class="tag warn">kein Kurs</span>' : ''}
-    </span>
-  </button>`;
-}
-
-function virtDetail(p){
-  const Q = VQ[p.quelle] || VQ.score;
-  const K = p.korb ? KOERBE[p.korb] : null;
-  const bn = (VP.benchmark_namen || {})[p.benchmark_symbol] || p.benchmark_symbol;
-  return `
-    <h2 class="sec">${esc(p.symbol)}</h2>
-    <div class="card">
-      <div class="mono ${sign(p.rendite_pct)}" style="font-size:36px;font-weight:750;letter-spacing:-.02em;line-height:1">
-        ${p.rendite_pct == null ? '–' : pct(p.rendite_pct)}</div>
-      <div class="muted" style="font-size:12px;margin-top:6px">Rendite in Euro seit ${datum(p.opened)}</div>
-      <div style="height:14px"></div>
-      <div class="kv"><span>Name</span><span>${esc(p.name || '–')}</span></div>
-      <div class="kv"><span>Quelle</span><span>${Q.lang}${K ? ' · ' + esc(K.titel) : ''}</span></div>
-      ${p.score_at_entry != null ? `<div class="kv"><span>Score beim Einstand</span><span>${nf(p.score_at_entry, 1)}</span></div>` : ''}
-      <div class="kv"><span>Status</span><span>${p.status === 'offen' ? 'offen'
-        : 'geschlossen ' + datum(p.closed) + (p.schliessgrund ? ' · ' + esc(p.schliessgrund) : '')}</span></div>
-      ${p.stop_kurs != null ? `<div class="kv"><span>Stop lag bei</span>
-        <span>${nf(p.stop_kurs, 2)} USD, Höchststand ${nf(p.hoechster_kurs, 2)}</span></div>` : ''}
-    </div>
-    <h2 class="sec">Rechnung</h2>
-    <div class="card">
-      <div class="kv"><span>Einsatz</span><span>${eur(p.einsatz_eur)}</span></div>
-      <div class="kv"><span>Einstand</span><span>${p.entry_price_usd == null ? '–' : nf(p.entry_price_usd, 2) + ' USD'}</span></div>
-      <div class="kv"><span>Stückzahl</span><span>${p.stueck == null ? '–' : nf(p.stueck, 4)}</span></div>
-      <div class="kv"><span>Kurs jetzt</span><span>${p.price_now_usd == null ? '–' : nf(p.price_now_usd, 2) + ' USD'}${
-        p.kurs_stand ? ' <span class="muted">(' + datum(p.kurs_stand) + ')</span>' : ''}</span></div>
-      <div class="kv"><span>Wert vor Kosten</span><span>${eur(p.brutto_wert_eur)}</span></div>
-      <div class="kv"><span>Gebühren und Spread</span><span class="down">${eur(p.kosten_eur)}</span></div>
-      <div class="kv"><span>Wert nach Kosten</span><span>${eur(p.wert_eur)}</span></div>
-      <div class="kv"><span>Gewinn</span><span class="${sign(p.gewinn_eur)}">${eur(p.gewinn_eur)}</span></div>
-      <div class="kv"><span>Rendite vor Kosten</span><span class="${sign(p.brutto_rendite_pct)}">${pct(p.brutto_rendite_pct)}</span></div>
-      <div class="kv"><span>davon Kosten gekostet</span><span class="down">${pct(p.kostenlast_pct, 2)}</span></div>
-    </div>
-    <h2 class="sec">Gegen den Vergleichsindex</h2>
-    <div class="card">
-      <div class="kv"><span>Kurs allein, in Dollar</span><span class="${sign(p.kurs_pct)}">${pct(p.kurs_pct)}</span></div>
-      <div class="kv"><span>${esc(bn)}</span><span class="${sign(p.benchmark_pct)}">${pct(p.benchmark_pct)}</span></div>
-      <div class="kv"><span>Überrendite vor Kosten</span><span class="${sign(p.excess_pct)}">${pct(p.excess_pct)}</span></div>
-      <div class="kv"><span>Überrendite nach Kosten</span><span class="${sign(p.excess_netto_pct)}">${pct(p.excess_netto_pct)}</span></div>
-      <div class="kv"><span>davon Währungseffekt</span><span class="${sign(p.waehrungseffekt_pct)}">${pct(p.waehrungseffekt_pct, 2)}</span></div>
-      <p class="muted" style="font-size:12.5px;margin:8px 0 0">Die Überrendite wird in Dollar
-      gerechnet, weil der Vergleichsindex in Dollar notiert. Der Währungseffekt steht getrennt,
-      sonst würde eine Dollarschwäche wie eine schlechte Auswahl aussehen.</p>
-    </div>
-    ${p.notiz || p.issue || p.datenstand ? `<h2 class="sec">Herkunft</h2>
-    <div class="card">
-      ${p.datenstand ? `<div class="kv"><span>Datenstand des Laufs</span><span>${datum(p.datenstand)}</span></div>` : ''}
-      ${p.notiz ? `<p style="margin:8px 0 0">${esc(p.notiz)}</p>` : ''}
-      ${p.issue ? `<p style="margin:10px 0 0"><a href="${esc(p.issue)}" target="_blank" rel="noopener">Ursprungs-Issue ↗</a></p>` : ''}
-    </div>` : ''}
-    ${p.fehler ? `<div class="card"><p class="gold">${esc(p.fehler)}. Die gezeigten Werte
-      stammen aus dem letzten erfolgreichen Lauf.</p></div>` : ''}
-    <div style="height:10px"></div>
-    <button class="btn ghost" style="width:100%" data-close>Schließen</button>`;
-}
-
-function virtBlock(titel, b, roh){
-  /* `roh` ist die Zahl der eingetragenen Positionen, `b.anzahl` die der
-     bereits bewerteten. Die beiden auseinanderzuhalten ist der Unterschied
-     zwischen "da ist noch nichts" und "der Kursabruf steht noch aus". */
-  if (!b || !b.anzahl) return `<div class="tile"><div class="n">–</div>
-    <div class="k">${titel}, ${roh ? roh + ' Position' + (roh === 1 ? '' : 'en')
-      + '<br>Kurse folgen mit dem nächsten Lauf' : 'noch keine Position'}</div></div>`;
-  return `<div class="tile reveal">
-    <div class="n ${sign(b.rendite_pct)}">${b.rendite_pct == null ? '–'
-      : `<span data-count="${b.rendite_pct}" data-decimals="1" data-fmt="pct">0</span>`}</div>
-    <div class="k">${titel} · ${b.anzahl} Position${b.anzahl === 1 ? '' : 'en'}<br>
-      Überrendite ${pct(b.median_excess_pct)}</div></div>`;
-}
-
-function renderVirtuell(){
-  const hero = $('#virt-hero');
-  if (!VP){
-    hero.innerHTML = `<div class="card"><h3 class="gold">Noch nicht geladen</h3>
-      <p class="muted">data/virtual_portfolio.json ist nicht erreichbar. Der erste
-      Lauf legt die Datei an.</p></div>`;
-    return;
-  }
-  const S = VP.summe || {}, g = S.gesamt || {};
-  const alle = VP.positionen || [];
-  const kosten = VP.kosten || {ordergebuehr_eur:0, echte_ordergroesse_eur:0,
-    spread_pct_je_seite:0, pct_hin_und_zurueck:0};
-  const stop = VP.stop || {faktor:2.5};
-  const wartend = alle.filter(p => p.wert_eur == null).length;
-
-  hero.innerHTML = `
-    <div class="card">
-      <div style="display:flex;align-items:flex-end;gap:16px">
-        <div>
-          <div class="mono ${sign(g.rendite_pct)}" style="font-size:40px;font-weight:750;letter-spacing:-.02em;line-height:1">
-            ${g.rendite_pct == null ? '–' : pct(g.rendite_pct)}</div>
-          <div class="muted" style="font-size:12px;margin-top:6px">Gesamtrendite in Euro</div>
-        </div>
-        <div style="margin-left:auto;text-align:right">
-          <div class="mono ${sign(g.median_excess_pct)}" style="font-size:21px;font-weight:650">${pct(g.median_excess_pct)}</div>
-          <div class="muted" style="font-size:11.5px">Überrendite, Median</div>
-        </div>
-      </div>
-      <div style="height:14px"></div>
-      <div class="kv"><span>Positionen</span><span>${alle.length} · davon ${
-        alle.filter(p => p.status === 'offen').length} offen</span></div>
-      <div class="kv"><span>Eingesetzt</span><span>${eur(g.einsatz_eur)}</span></div>
-      <div class="kv"><span>Wert heute</span><span>${eur(g.wert_eur)}</span></div>
-      <div class="kv"><span>Gewinn</span><span class="${sign(g.gewinn_eur)}">${eur(g.gewinn_eur)}</span></div>
-      <div class="kv"><span>Schlägt den Index</span><span>${g.besser_als_benchmark || 0} von ${g.mit_benchmark || 0}</span></div>
-      <div class="kv"><span>Positionsgröße</span><span>${eur(VP.einsatz_eur, 0)} je Titel, gleichgewichtet</span></div>
-      <div class="kv"><span>Kosten bezahlt</span><span class="down">${eur(g.kosten_eur)}</span></div>
-      <div class="kv"><span>Letzter Lauf</span><span>${datum(VP.updated_at)}${
-        wartend ? ` <span class="gold">· ${wartend} ohne Kurs</span>` : ''}</span></div>
-    </div>
-    <div class="tiles">
-      ${virtBlock('Datenauswahl', S.score, alle.filter(p => p.quelle === 'score').length)}
-      ${virtBlock('Trump', S.trump, alle.filter(p => p.quelle === 'trump').length)}
-    </div>
-    <div class="card">
-      <h3>Was hier gemessen wird</h3>
-      <p>Jede Aufnahme bekommt denselben Einsatz von ${eur(VP.einsatz_eur, 0)}, damit die
-      Gesamtrendite der ehrliche Durchschnitt der Auswahl ist und nicht das Ergebnis
-      zufälliger Stückzahlen. Einstand ist der Schlusskurs des Tages, an dem ein Titel
-      aufgenommen wurde, nie ein späterer.</p>
-      <p><b>Gebühren und Spread sind eingerechnet</b>, und zwar auf die Ordergröße, die
-      wirklich gehandelt werden soll: ${eur(kosten.ordergebuehr_eur)} Gebühr auf
-      ${eur(kosten.echte_ordergroesse_eur, 0)} Order plus ${nf(kosten.spread_pct_je_seite, 2)} %
-      Spanne je Seite, zusammen <b>${nf(kosten.pct_hin_und_zurueck, 2)} % hin und zurück</b>.
-      Genau um diesen Betrag muss eine Auswahl den Index schlagen, bevor überhaupt etwas
-      übrig bleibt. Steuern sind weiterhin nicht abgebildet.</p>
-      <p>Positionen schließen sich selbst, wenn der Kurs mehr als das
-      ${nf(stop.faktor, 1)}-fache der mittleren Tagesschwankung unter den höchsten Stand seit
-      Einstand fällt. Ein fester Prozentstop wäre bei diesen Titeln ein Zufallsgenerator.</p>
-      ${alle.length < 10 ? '<p class="gold"><b>Bei so wenigen Positionen ist jede Kennzahl hier Rauschen, keine Aussage. Die belastbare Messung steht im Reiter Verlauf.</b></p>' : ''}
-    </div>`;
-  beobachteGruppe($('#virt-hero .tiles'));
-
-  const vergleichEl = $('#virt-vergleich');
-  const rows = [
-    {lbl:'Datenauswahl, Rendite nach Kosten',    v:(S.score || {}).rendite_pct},
-    {lbl:'Datenauswahl, Überrendite nach Kosten', v:(S.score || {}).median_excess_pct},
-    {lbl:'Trump, Rendite nach Kosten',           v:(S.trump || {}).rendite_pct},
-    {lbl:'Trump, Überrendite nach Kosten',        v:(S.trump || {}).median_excess_pct}
-  ];
-  const max = Math.max(10, ...rows.map(r => Math.abs(r.v || 0)));
-  vergleichEl.innerHTML = rows.map(r => `
-    <div class="compare-row reveal" data-w="${r.v == null ? 0 : Math.max(3, Math.min(100, Math.abs(r.v) / max * 100))}">
-      <div class="compare-top">
-        <span class="compare-label">${r.lbl}</span>
-        <span class="compare-num ${sign(r.v)}"${r.v == null ? '' : ` data-count="${r.v}" data-decimals="1" data-fmt="pct"`}>${r.v == null ? pct(r.v) : pct(0)}</span>
-      </div>
-      <div class="compare-track"><span class="compare-fill ${sign(r.v)}"></span></div>
-    </div>`).join('');
-  beobachteAlle(vergleichEl, '.compare-row');
-
-  const zahl = q => (VP.positionen || []).filter(p => q === '*' ? true
-    : q === 'zu' ? p.status !== 'offen' : p.quelle === q).length;
-  $('#virt-chips').innerHTML = [['*', 'Alle'], ['score', 'Datenauswahl'],
-      ['trump', 'Trump'], ['zu', 'Geschlossen']]
-    .map(([k, t]) => `<button class="chip ${virtFilter === k ? 'on' : ''}" data-v="${k}">${t} ${zahl(k)}</button>`).join('');
-  $$('#virt-chips .chip').forEach(b => b.onclick = () => { virtFilter = b.dataset.v; renderVirtuell(); });
-
-  const liste = virtPositionen();
-  const maxAbs = Math.max(1, ...liste.map(p => Math.abs(p.rendite_pct || 0)));
-  $('#virt-liste').innerHTML = liste.length
-    ? `<div class="card">${liste.map(p => virtZeile(p, maxAbs)).join('')}</div>`
-    : `<div class="card"><p class="muted">Keine Position in dieser Auswahl.</p></div>`;
-  $$('#virt-liste .row').forEach(b => b.onclick = () => {
-    const p = (VP.positionen || []).find(x => x.id === b.dataset.vid);
-    if (p) sheet(virtDetail(p));
-  });
-  beobachteAlle($('#virt-liste'), '.row');
-
-  const neu = t => `https://github.com/${CFG.repo}/issues/new?template=${t}`;
-  $('#virt-anleitung').innerHTML = `
-    <p>Der Lauf sammelt jeden Sonntagabend selbst ein, was in der Zwischenzeit
-    aufgemacht wurde. Es gibt keinen automatischen Feed für öffentliche Äußerungen,
-    das Anlegen ist deshalb ein Handgriff, die Bewertung danach läuft von allein.</p>
-    <div style="height:10px"></div>
-    <div class="kv"><span>Trump hat zu einem Titel geraten</span>
-      <span><a href="${neu('trump.yml')}" target="_blank" rel="noopener">Issue anlegen ↗</a></span></div>
-    <div class="kv"><span>Eigener Titel, ohne Screening</span>
-      <span><a href="${neu('kauf.yml')}" target="_blank" rel="noopener">Issue anlegen ↗</a></span></div>
-    <div class="kv"><span>Position schließen</span>
-      <span><a href="${neu('verkauf.yml')}" target="_blank" rel="noopener">Issue anlegen ↗</a></span></div>
-    <div class="kv"><span>Sofort neu rechnen</span>
-      <span><a href="https://github.com/${CFG.repo}/actions/workflows/virtuelles-depot.yml" target="_blank" rel="noopener">Lauf starten ↗</a></span></div>
-    <p class="muted" style="font-size:12.5px;margin:10px 0 0">Ticker in den Titel des Issues,
-    alles danach wird ignoriert. Einstand ist der Schlusskurs des Tages, an dem das Issue
-    entsteht, nicht der des Laufs. Aus der GitHub-App am Handy sind das rund zehn Sekunden.</p>`;
-}
-
-/* ═══════════ DEPOT ═══════════ */
-const b64dec = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-async function schluessel(pw, salt, iter){
-  const raw = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:iter, hash:'SHA-256'},
-    raw, {name:'AES-GCM', length:256}, false, ['decrypt', 'encrypt']);
-}
-const b64enc = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
-
-/* ───────── Depot merken und zurückschreiben ─────────
-   Die Seite hat keinen Server, sie kann selbst nichts dauerhaft speichern.
-   Nach dem Entsperren bleiben Klartext und Schlüssel nur im Speicher dieser
-   Sitzung. "Speichern" heißt hier: eine neue verschlüsselte Datei bauen und
-   zum Download anbieten. Maik ersetzt data/depot.enc damit und committet wie
-   bisher, nur ohne von Hand JSON zu bearbeiten oder ein Python-Skript
-   aufzurufen. */
-let DEPOT = null, DEPOT_KEY = null, DEPOT_SALT = null, DEPOT_ITER = null;
-
-function zeigeSpeicherHinweis(){
-  sheet(`<h2 class="sec">Heruntergeladen</h2>
-    <div class="card">
-      <p><span class="code">depot.enc</span> liegt jetzt im Downloads-Ordner. Ersetze
-      damit die Datei unter <span class="code">data/depot.enc</span> im Repo und
-      committe wie gewohnt:</p>
-      <div style="height:8px"></div>
-      <p class="code" style="display:block;white-space:pre-line;line-height:1.7">cd ~/Desktop/"Claude Cowork"/sparplan-site
-mv ~/Downloads/depot.enc data/depot.enc
-git add data/depot.enc && git commit -m "Depot aktualisiert" && git push</p>
-      <p style="margin-top:10px">Bis dahin zeigt nur diese Sitzung den neuen Stand,
-      die veroeffentlichte Seite noch den alten.</p>
-    </div>
-    <div style="height:10px"></div>
-    <button class="btn ghost" style="width:100%" data-close>Verstanden</button>`);
-}
-
-async function depotSpeichern(){
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const pt = new TextEncoder().encode(JSON.stringify(DEPOT));
-  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, DEPOT_KEY, pt);
-  const box = {salt: DEPOT_SALT, iv: b64enc(iv), iter: DEPOT_ITER, ct: b64enc(ct)};
-  const blob = new Blob([JSON.stringify(box)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'depot.enc'; document.body.appendChild(a); a.click();
-  a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
-  depotZeigen(DEPOT);
-}
-function depotLock(){
-  $('#depot-body').innerHTML = `
-    <div class="lock">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="1.5"
-           stroke-linecap="round">
-        <rect x="3.5" y="9.5" width="17" height="11" rx="2.2"/>
-        <path d="M8 9.5V6.4a4 4 0 0 1 8 0v3.1"/><path d="M12 13.6v2.8"/>
-      </svg>
-      <h3 style="margin:16px 0 5px">Depot verschlossen</h3>
-      <p class="muted" style="max-width:330px;margin:0 auto;font-size:14px">
-        Der Bestand liegt auf dieser öffentlichen Seite nur als AES-256-GCM-Block.</p>
-      <form id="unlock">
-        <input type="password" id="pw" placeholder="Passwort" autocomplete="current-password">
-        <div><button class="btn" type="submit">Entsperren</button></div>
-        <div class="err" id="lockerr"></div>
-      </form>
-    </div>`;
-  $('#unlock').onsubmit = async ev => {
-    ev.preventDefault();
-    const err = $('#lockerr'); err.textContent = '';
+  },
+  async run(mode, fn) {
     try {
-      const box = await (await fetch(CFG.depot, {cache:'no-store'})).json();
-      const key = await schluessel($('#pw').value, b64dec(box.salt), box.iter || 210000);
-      const klar = await crypto.subtle.decrypt({name:'AES-GCM', iv:b64dec(box.iv)}, key, b64dec(box.ct));
-      DEPOT = JSON.parse(new TextDecoder().decode(klar));
-      DEPOT_KEY = key; DEPOT_SALT = box.salt; DEPOT_ITER = box.iter || 210000;
-      depotZeigen(DEPOT);
-    } catch (e) {
-      err.textContent = e instanceof SyntaxError || String(e).includes('JSON')
-        ? 'Noch kein verschlüsseltes Depot hinterlegt.' : 'Passwort passt nicht.';
-    }
-  };
-}
+      const db = await this.open();
+      return await new Promise(res => {
+        const t = db.transaction('k', mode), st = t.objectStore('k'), q = fn(st);
+        t.oncomplete = () => res(q && q.result); t.onerror = () => res(null); t.onabort = () => res(null);
+      });
+    } catch (e) { return null; }
+  },
+  get(k) { return this.run('readonly', s => s.get(k)); },
+  set(k, v) { return this.run('readwrite', s => s.put(v, k)); },
+  clear() { return this.run('readwrite', s => s.clear()); }
+};
 
-/* Näherungsweise Gewichtung einzelner Aktien INNERHALB der gehaltenen ETF.
-   Keine Live-Quelle: aus bekannten Indexzusammensetzungen, Stand ungefähr
-   Sommer 2026, gerundet. Muss ersetzt werden, sobald ein echter Datenlauf
-   Fondsdurchschauwerte mitbringt (Fondsanbieter-Factsheet oder Index-API).
-   Reihenfolge ist wichtig: "Information Tech" und "NASDAQ100" müssen vor
-   dem allgemeinen "S&P 500" geprüft werden, weil ihr Fondsname diesen
-   Teilstring ebenfalls enthalten kann. */
-/* Stand der Fondsgewichte: 30. Juli - 15. August 2026, aus den offiziellen
-   Kennzahlen der Fondsanbieter (justETF/iShares-Factsheets), keine
-   Live-Abfrage. Google-Positionen fassen die A- und C-Aktie des jeweiligen
-   Fonds zusammen, weil hier die Unternehmens-, nicht die Aktiengattungs-
-   Exposure zaehlt. */
-const ETF_GEWICHTE = new Map([
-  ['Information Tech', {AAPL:20.12, NVDA:19.82, MSFT:14.16}],
-  ['MSCI World',       {AAPL:5.48, NVDA:5.04, MSFT:3.56, GOOGL:3.91, TSLA:1.28}],
-  ['MSCI EM IMI',      {TSM:13.04, '1810.HK':0.44}],
-  ['NASDAQ100',        {AAPL:8.16, NVDA:7.87, MSFT:5.58, GOOGL:6.27, TSLA:3.0}],
-  ['S&P 500',          {AAPL:7.65, NVDA:7.38, MSFT:5.23, GOOGL:5.52, TSLA:1.42}],
-]);
-function fondsFuer(name){
-  for (const [schluessel, gewichte] of ETF_GEWICHTE)
-    if ((name || '').includes(schluessel)) return gewichte;
+/* ───────── Depot entschlüsseln ─────────
+   Gleiches Salz in depot.enc und depot_live.enc. Der abgeleitete Schlüssel
+   wird nicht exportierbar auf diesem Gerät gespeichert, das Passwort nie. */
+const b64dec = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function depotBox() {
+  for (const f of ['data/depot_live.enc', 'data/depot.enc']) {
+    try { const r = await fetch(f, { cache: 'no-cache' }); if (r.ok) return await r.json(); } catch (e) { /* weiter */ }
+  }
   return null;
 }
-function durchschau(h){
-  const etfs = h.filter(x => x.kind === 'etf');
-  const aktien = h.filter(x => x.kind === 'aktie' && x.symbol);
-  const symbole = new Set(aktien.map(a => a.symbol));
-  ETF_GEWICHTE.forEach(g => Object.keys(g).forEach(s => symbole.add(s)));
-
-  return [...symbole].map(sym => {
-    const direkt = aktien.find(a => a.symbol === sym);
-    let indirekt = 0;
-    etfs.forEach(e => {
-      const g = fondsFuer(e.name);
-      if (g && g[sym] != null) indirekt += (e.weight || 0) / 100 * g[sym];
-    });
-    const brutto = direkt?.weight || 0;
-    return {sym, name: direkt?.name || sym, direkt: brutto, indirekt,
-             gesamt: brutto + indirekt};
-  }).filter(r => r.gesamt >= 0.3).sort((a, b) => b.gesamt - a.gesamt);
+async function ableiten(pw, salt, iter) {
+  const raw = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, raw,
+    { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
 }
-function renderDurchschau(h){
-  const rows = durchschau(h);
-  if (!rows.length) return '';
-  const top2 = rows.slice(0, 2).reduce((s, r) => s + r.gesamt, 0);
-  const top2direkt = rows.slice(0, 2).reduce((s, r) => s + r.direkt, 0);
-  const maxGesamt = Math.max(1, ...rows.map(r => r.gesamt));
-  const vergleich = rows.slice(0, 5).map(r => `
-    <div class="compare-row reveal" data-w="${Math.max(3, r.gesamt / maxGesamt * 100)}">
-      <div class="compare-top">
-        <span class="compare-label">${esc(r.sym)}</span>
-        <span class="compare-sub">${nf(r.direkt, 1)} % direkt${r.indirekt >= 0.05 ? ' + ' + nf(r.indirekt, 1) + ' % über ETF' : ''}</span>
-        <span class="compare-num" data-count="${r.gesamt}" data-decimals="1" data-fmt="pct-plain">0 %</span>
-      </div>
-      <div class="compare-track"><span class="compare-fill"></span></div>
-    </div>`).join('');
-  return `
-    <h2 class="sec">Durchschau durch die ETF</h2>
-    <section class="fullbleed perf" style="margin-top:16px;margin-bottom:28px">
-      <div class="perf-inner">
-        <p class="kicker">Im Vergleich</p>
-        <h2 class="big-h" style="font-size:clamp(22px,4.4vw,30px)">Direkt vs. über ETF.</h2>
-        <p class="lede">Die direkte Depotgewichtung zeigt nur die halbe Exposure. Durchgerechnet
-          mit den Fondsanteilen kommen die größten Positionen deutlich höher heraus.</p>
-        <div class="compare">${vergleich}</div>
-      </div>
-    </section>
-    <div class="card">
-      <table class="durchschau">
-        <tr><th>Titel</th><th>direkt</th><th>über ETF</th><th>gesamt</th></tr>
-        ${rows.map(r => `<tr>
-          <td>${esc(r.sym)}</td>
-          <td class="brutto">${nf(r.direkt, 1)} %</td>
-          <td class="brutto">${r.indirekt >= 0.05 ? '+' + nf(r.indirekt, 1) + ' %' : '–'}</td>
-          <td class="netto">${nf(r.gesamt, 1)} %</td>
-        </tr>`).join('')}
-      </table>
-      <p class="hinweis">Die direkte Gewichtung zeigt kein Depot vollständig: die beiden größten
-      Positionen machen zusammen ${nf(top2direkt, 0)} % direkt aus, durchgerechnet mit den
-      Fondsanteilen aber rund ${nf(top2, 0)} %. Die Fondsgewichte stammen aus den offiziellen
-      Kennzahlen der Fondsanbieter (Stand Ende Juli/August 2026), keine Live-Abfrage. Nach
-      groesseren Index-Umschichtungen der Fonds braucht diese Tabelle eine manuelle
-      Aktualisierung.</p>
-    </div>`;
+async function oeffnen(box, key) {
+  const klar = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64dec(box.iv) }, key, b64dec(box.ct));
+  return JSON.parse(new TextDecoder().decode(klar));
 }
-
-/* Positionsakte: hält beim Kauf fest, welche Kennzahlen den Rang getragen
-   haben, prüft wöchentlich, ob der Grund noch gilt. Baustein `position.py`
-   ist fertig und getestet, aber noch nicht an einen Datenlauf angeschlossen,
-   siehe Projektnotiz "Zielbild-Kauf-und-Verkauf". Sobald `dp.positionen`
-   Einträge liefert, erscheinen sie hier mit Halten/Prüfen/Verkaufen; bis
-   dahin steht nur die Erklärung. */
-function renderPositionen(dp){
-  const alle = dp.positionen || [];
-  const offen = alle.filter(p => p.status !== 'geschlossen');
-  const zu = alle.filter(p => p.status === 'geschlossen');
-  if (!alle.length){
-    return `<h2 class="sec">Kauf- und Verkaufslogik</h2>
-      <div class="card">
-        <h3>Noch keine Positionsakte</h3>
-        <p>Für jeden Kauf hält die Seite künftig fest, welche Kennzahlen ihn begründet
-        haben, und prüft wöchentlich, ob der Grund noch gilt. Ein Kauf lässt sich im
-        Detailblatt eines Kandidaten anlegen ("Gekauft?"). Verkaufsvorschläge stützen
-        sich dann auf echte Kennzahlen statt auf ein starres Kursziel, sobald ein
-        Datenlauf die wöchentliche Prüfung mitbringt.</p>
-      </div>`;
+function normalisieren(d) {
+  if (d.positionen && d.positionen.length && 'wert' in d.positionen[0]) return d;
+  if (d.version === 2) {
+    const ps = d.positionen.map(p => ({
+      k: p.symbol, name: p.name, art: p.art, isin: p.isin,
+      ex: p.symbol.endsWith('.DE') ? 'XETRA' : p.symbol.endsWith('.HK') ? 'HK' : 'US',
+      wert: p.wert_eur, einstand: p.wert_eur - p.gewinn_eur, gewinn: p.gewinn_eur,
+      pct: p.gewinn_eur / (p.wert_eur - p.gewinn_eur) * 100, t3m: null, vomHoch: null, zahlen: null, serie: []
+    }));
+    const w = ps.reduce((a, p) => a + p.wert, 0), e = ps.reduce((a, p) => a + p.einstand, 0);
+    ps.forEach(p => p.gewicht = p.wert / w * 100);
+    return { statisch: true, bestand_stand: d.stand, kurse_stand: d.stand, wert: w, einstand: e, gewinn: w - e,
+      seitKauf: (w / e - 1) * 100, serie: [], positionen: ps.sort((a, b) => b.wert - a.wert) };
   }
-  const FARBE = {verkaufen:'warn', pruefen:'mid', halten:'go'};
-  const TEXT  = {verkaufen:'Verkaufen', pruefen:'Prüfen', halten:'Halten'};
-  const offenHtml = offen.map(p => `<div class="row">
-      <span class="rhead">
-        <span class="sym">${esc(p.symbol)}</span>
-        <span class="tag ${FARBE[p.status] || 'go'}" style="margin-left:auto">${esc(TEXT[p.status] || 'Halten')}</span>
-      </span>
-      <span class="nm" style="white-space:normal;margin-top:6px">${esc(p.summary || '')}</span>
-      <span class="nm" style="margin-top:4px">${p.quantity} Stück · Einstand ${nf(p.entry_price_usd,2)} USD
-        am ${datum(p.opened)} · Score ${nf(p.score_at_entry,1)}</span>
-      ${(p.drivers || []).length ? `<span class="tags">${p.drivers.map(d =>
-        `<span class="tag">${esc(KURZ[d.name] || d.name)}</span>`).join('')}</span>` : ''}
-      <button class="mehr" style="margin-top:9px" data-verkauf="${esc(p.symbol)}">Verkauft markieren</button>
-    </div>`).join('');
-  const zuHtml = zu.length ? `<h2 class="sec">Geschlossen</h2><div class="card">${
-    zu.map(p => `<div class="kv"><span>${esc(p.symbol)}, ${datum(p.closed)}</span>
-      <span class="${sign(p.realized_pct)}">${pct(p.realized_pct)}</span></div>`).join('')}</div>` : '';
-  return `<h2 class="sec">Kauf- und Verkaufslogik</h2><div class="card">${offenHtml}</div>${zuHtml}`;
+  return { alt: true, positionen: [] };
 }
-function bindVerkaufen(root){
-  $$('[data-verkauf]', root).forEach(b => b.onclick = () => {
-    const sym = b.dataset.verkauf;
-    const p = (DEPOT.positionen || []).find(x => x.symbol === sym && x.status !== 'geschlossen');
-    if (!p) return;
-    sheet(`<h2 class="sec">${esc(sym)} verkauft</h2>
-      <div class="card">
-        <form data-exit="${esc(sym)}">
-          <div class="kv"><span>Verkaufspreis</span>
-            <span><input type="number" step="0.01" name="preis" required
-              style="width:110px;text-align:right;border:1px solid var(--line2);
-              border-radius:8px;padding:6px 8px;font-size:14.5px;background:var(--bg);
-              color:var(--ink)"> USD</span></div>
-          <div class="kv"><span>Datum</span>
-            <span><input type="date" name="datum" value="${new Date().toISOString().slice(0,10)}"
-              required style="border:1px solid var(--line2);border-radius:8px;
-              padding:6px 8px;font-size:14.5px;background:var(--bg);color:var(--ink)"></span></div>
-          <div style="height:6px"></div>
-          <button class="btn" type="submit" style="width:100%">Als verkauft eintragen</button>
-        </form>
-      </div>`);
-    $('[data-exit]').onsubmit = async ev => {
-      ev.preventDefault();
-      const fd = new FormData(ev.target);
-      const preis = parseFloat(fd.get('preis'));
-      if (!(preis > 0)) return;
-      p.status = 'geschlossen';
-      p.closed = fd.get('datum');
-      p.exit_price_usd = preis;
-      p.realized_pct = Math.round((preis / p.entry_price_usd - 1) * 1000) / 10;
-      await depotSpeichern();
-      zeigeSpeicherHinweis();
-    };
-  });
+async function depotAuto() {
+  const box = await depotBox(); if (!box || !window.crypto || !crypto.subtle) return;
+  const key = await IDB.get('key:' + box.salt); if (!key) return;
+  try { DEPOT = normalisieren(await oeffnen(box, key)); } catch (e) { await IDB.clear(); }
+}
+async function depotEntsperren(pw) {
+  const box = await depotBox(); if (!box) throw new Error('fehlt');
+  const key = await ableiten(pw, b64dec(box.salt), box.iter || 210000);
+  DEPOT = normalisieren(await oeffnen(box, key));
+  await IDB.set('key:' + box.salt, key);
 }
 
-function depotZeigen(dp){
-  const h = dp.holdings || [], p = dp.plan || {};
-  const aktien = h.filter(x => x.kind === 'aktie'), etfs = h.filter(x => x.kind === 'etf');
-  const anteil = a => a.reduce((s, x) => s + (x.weight || 0), 0);
-  const summe = h.reduce((s, x) => s + (x.value ?? 0), 0);
-  const imDepot = new Set(h.map(x => (x.symbol || '').toUpperCase()).filter(Boolean));
-  const doppelt = alleKandidaten().filter(d => imDepot.has(d.candidate.symbol.toUpperCase()));
-
-  const liste = a => [...a].sort((x, y) => (y.weight || 0) - (x.weight || 0)).map(x => `
-    <div class="row reveal">
-      <span class="rhead">
-        <span class="sym">${esc(x.symbol || x.name)}</span>
-        <span class="score">${nf(x.weight, 1)} %</span>
-      </span>
-      ${x.symbol ? `<span class="nm">${esc(x.name)}</span>` : ''}
-      <span class="bar"><i data-w="${Math.min(100, (x.weight || 0) * 3.5)}"></i></span>
-    </div>`).join('');
-  const planPos = p.positions || p.items || [];
-
-  $('#depot-body').innerHTML = `
-    <h2 class="sec">Bestand</h2>
-    <div class="tiles">
-      <div class="tile reveal"><div class="n"><span data-count="${h.length}">0</span></div><div class="k">Positionen</div></div>
-      <div class="tile reveal"><div class="n">${summe ? `<span data-count="${summe}">0</span><small>€</small>` : '–'}</div><div class="k">Wert</div></div>
-      <div class="tile reveal"><div class="n"><span data-count="${anteil(aktien)}">0</span><small>%</small></div><div class="k">Einzelaktien</div></div>
-      <div class="tile reveal"><div class="n"><span data-count="${anteil(etfs)}">0</span><small>%</small></div><div class="k">ETF</div></div>
-    </div>
-    ${renderDurchschau(h)}
-    ${renderPositionen(dp)}
-    ${doppelt.length ? `<h2 class="sec">Bereits im Bestand</h2><div class="card">
-      <p>${doppelt.length} Wert${doppelt.length > 1 ? 'e' : ''} aus dem aktuellen Screening liegen schon im Depot.</p>
-      <div style="height:8px"></div>${doppelt.map((d, i) => zeile(d, i)).join('')}</div>` : ''}
-    ${aktien.length ? `<h2 class="sec">Aktien</h2><div class="card">${liste(aktien)}</div>` : ''}
-    ${etfs.length ? `<h2 class="sec">ETF</h2><div class="card">${liste(etfs)}</div>` : ''}
-    ${(aktien.length || etfs.length) ? `
-    <div class="final">
-      <h2 class="sec">Aktien im Vergleich zu ETF</h2>
-      <div class="final-grid two">
-        <div class="compare-card reveal">
-          <span class="cc-farbe"></span>
-          <h4>Einzelaktien</h4>
-          <div class="cc-unter">${aktien.length} Position${aktien.length === 1 ? '' : 'en'}</div>
-          <div class="cc-num"><span data-count="${anteil(aktien)}">0</span><small style="font-size:16px">%</small></div>
-          <div class="cc-lbl">Anteil am Depot</div>
-        </div>
-        <div class="compare-card reveal g">
-          <span class="cc-farbe"></span>
-          <h4>ETF</h4>
-          <div class="cc-unter">${etfs.length} Position${etfs.length === 1 ? '' : 'en'}</div>
-          <div class="cc-num"><span data-count="${anteil(etfs)}">0</span><small style="font-size:16px">%</small></div>
-          <div class="cc-lbl">Anteil am Depot</div>
-        </div>
-      </div>
-    </div>` : ''}
-    ${planPos.length ? `<h2 class="sec">Sparplan</h2><div class="card">
-      ${planPos.map(x => `<div class="kv"><span>${esc(x.name || x.symbol)}</span>
-        <span>${x.amount != null ? eur(x.amount) : nf(x.weight, 1) + ' %'}</span></div>`).join('')}
-      ${p.monthly != null ? `<div class="kv"><span>Summe im Monat</span><span>${eur(p.monthly)}</span></div>` : ''}
-    </div>` : ''}
-    <div class="center" style="margin:20px 0">
-      <button class="btn ghost" onclick="location.reload()">Wieder verschließen</button>
-    </div>`;
-  bindRows($('#depot-body'), alleKandidaten());
-  bindVerkaufen($('#depot-body'));
-  beobachteAlle($('#depot-body'), '.tile, .compare-card, .compare-row');
-  kippbarAlle($('#depot-body'), '.tile, .compare-card');
+/* ───────── Depot verstehen ───────── */
+// Gewichte der Einzelwerte in den Fonds, Stand Sommer 2026, aus den Factsheets.
+const ETF_GEWICHTE = [['Information Tech', { AAPL: 20.12, NVDA: 19.82, MSFT: 14.16 }],
+  ['NASDAQ', { AAPL: 8.16, NVDA: 7.87, MSFT: 5.58, GOOGL: 6.27, TSLA: 3.0 }],
+  ['MSCI World', { AAPL: 5.48, NVDA: 5.04, MSFT: 3.56, GOOGL: 3.91, TSLA: 1.28 }],
+  ['EM IMI', { TSM: 13.04, '1810.HK': 0.44 }],
+  ['S&P 500', { AAPL: 7.65, NVDA: 7.38, MSFT: 5.23, GOOGL: 5.52, TSLA: 1.42 }]];
+const TECH_ETF = [['Information Tech', 1], ['NASDAQ', .6], ['MSCI World', .35], ['EM IMI', .3], ['S&P 500', .45]];
+const TECH_AKTIE = { NVDA: 1, MSFT: 1, AAPL: 1, TSM: 1, GOOGL: 1, '1810.HK': 1, AMD: 1 };
+const fonds = (name, tab) => { for (const [k, v] of tab) if ((name || '').includes(k)) return v; return null; };
+const imDepot = sym => DEPOT && DEPOT.positionen.find(p => p.k === sym);
+function durchschau(sym) {
+  if (!DEPOT) return null;
+  return DEPOT.positionen.reduce((s, p) => {
+    if (p.art === 'ETF') { const g = fonds(p.name, ETF_GEWICHTE); return s + (g && g[sym] ? p.gewicht * g[sym] / 100 : 0); }
+    return s + (p.k === sym ? p.gewicht : 0);
+  }, 0);
+}
+function techAnteil() {
+  if (!DEPOT) return null;
+  return DEPOT.positionen.reduce((s, p) => s + p.gewicht * (p.art === 'ETF' ? (fonds(p.name, TECH_ETF) || 0) : (TECH_AKTIE[p.k] || 0)), 0);
 }
 
-/* ───────── Hologramm-Energie ───────── */
-const kern = () => $('.holo-core')?.holo || null;
-function puls(ms = 2600){
-  const k = kern(); if (!k) return;
-  k.setEnergy(1);
-  setTimeout(() => k.setEnergy(null), ms);
+/* ───────── Handelszeiten in deutscher Zeit ─────────
+   Über die echten Zeitzonen gerechnet, damit die Wochen mit versetzter
+   Zeitumstellung (Ende Oktober, Mitte März) stimmen. Feiertage fehlen. */
+const inTz = (d, tz) => new Date(d.toLocaleString('en-US', { timeZone: tz }));
+const hm = m => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+const versatz = (t, tz) => Math.round((inTz(t, 'Europe/Berlin') - inTz(t, tz)) / 36e5);
+function handelstag() {
+  const now = new Date(), b = inTz(now, 'Europe/Berlin'), mins = b.getHours() * 60 + b.getMinutes();
+  const usFor = k => { const v = versatz(new Date(now.getTime() + k * 864e5), 'America/New_York'); return [570 + v * 60, 960 + v * 60]; };
+  let add = 0, [uo, uc] = usFor(0), wd = b.getDay();
+  while (wd === 0 || wd === 6 || (add === 0 && mins >= uc)) { add++; wd = (b.getDay() + add) % 7; [uo, uc] = usFor(add); }
+  const live = add === 0, tag = new Date(b.getTime() + add * 864e5).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+  const best = [uo + 15, 1050];
+  let titel, unter;
+  if (!live) { titel = `${b.getDay() === 0 || b.getDay() === 6 ? 'Wochenende' : 'Börsen geschlossen'}. Nächster Handel ${tag}.`; unter = `US-Börse ${hm(uo)} bis ${hm(uc)} Uhr, Xetra 9:00 bis 17:30 Uhr.`; }
+  else if (mins < 540) { titel = 'Vor Börsenstart.'; unter = `Xetra öffnet um 9:00, die US-Börse um ${hm(uo)} Uhr.`; }
+  else if (mins < uo) { titel = 'Xetra ist offen.'; unter = `US-Börse öffnet um ${hm(uo)} Uhr. Gut für ETFs.`; }
+  else if (mins < best[0]) { titel = 'US-Börse gerade eröffnet.'; unter = `Erste Viertelstunde abwarten, ab ${hm(best[0])} Uhr.`; }
+  else if (mins < best[1]) { titel = 'Beste Zeit für US-Aktien.'; unter = 'Xetra und US-Börse gleichzeitig offen.'; }
+  else { titel = 'US-Börse offen.'; unter = `Bis ${hm(uc)} Uhr. Limit-Order nutzen.`; }
+  return { live, mins, uo, uc, best, titel, unter };
+}
+function timeline(h) {
+  const A = 480, B = 1350, p = m => ((m - A) / (B - A) * 100).toFixed(2) + '%', w = (a, c) => ((c - a) / (B - A) * 100).toFixed(2) + '%';
+  return `<div class="tl" role="img" aria-label="Xetra 9:00 bis 17:30, US-Börse ${hm(h.uo)} bis ${hm(h.uc)}, beste Zeit ${hm(h.best[0])} bis ${hm(h.best[1])}"><span class="x" style="left:${p(540)};width:${w(540, 1050)}"></span><span class="u" style="left:${p(h.uo)};width:${w(h.uo, h.uc)}"></span><span class="b" style="left:${p(h.best[0])};width:${w(h.best[0], h.best[1])}"></span>${h.live && h.mins >= A && h.mins <= B ? `<span class="now" style="left:${p(h.mins)}"></span>` : ''}</div>
+  <div class="tlab num" aria-hidden="true"><span style="left:${p(540)}">9:00</span><span style="left:${p(h.uo)}">${hm(h.uo)}</span><span style="left:${p(1050)}">17:30</span><span style="left:${p(h.uc)}">${hm(h.uc)}</span></div>
+  <div class="legend"><span><i style="background:rgba(108,208,208,.6)"></i>Xetra</span><span><i style="background:rgba(158,202,255,.6)"></i>US-Börse</span><span><i style="background:var(--primary)"></i>Beste Zeit ${hm(h.best[0])} bis ${hm(h.best[1])}</span></div>`;
+}
+function zeitfenster(ex, art = 'kauf') {
+  const verb = art === 'kauf' ? 'Kaufen' : 'Verkaufen';
+  if (ex === 'XETRA') return `${verb} zwischen 9:15 und 17:30 Uhr, wenn Xetra offen ist.${art === 'kauf' ? ' Für ETFs ist der Sparplan günstiger, er kostet keine Gebühr.' : ''}`;
+  if (ex === 'HK') { const v = versatz(new Date(), 'Asia/Hong_Kong'); return `${verb} zwischen ${hm(570 + v * 60)} und ${hm(960 + v * 60)} Uhr deutscher Zeit, wenn Hongkong offen ist. Dann ist der Spread an den deutschen Handelsplätzen am engsten.`; }
+  const h = handelstag();
+  return `${verb} zwischen ${hm(h.best[0])} und ${hm(h.uc)} Uhr deutscher Zeit, wenn die US-Börse offen ist. Am besten bis 17:30, solange auch Xetra handelt. Limit-Order nutzen.`;
 }
 
-/* ═══════════ Start ═══════════ */
-async function start(){
-  buildTabs();
-  $('#stage')?.addEventListener('pointerdown', () => puls(1800));
-  $('#sheet').addEventListener('click', e => { if (e.target.closest('[data-close]')) closeSheet(); });
-  document.addEventListener('click', e => { if (e.target.matches('[data-close]')) closeSheet(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+/* ───────── Bewertung ───────── */
+function signal(x) {
+  const t = tageBis(x.zahlenISO);
+  if (imDepot(x.sym)) return ['Im Depot', 'neutral'];
+  if (x.handel !== 'ja') return ['Prüfen', 'check'];
+  if (t !== null && t >= 0 && t <= 14) return ['Nach den Zahlen', 'wait'];
+  if ((x.spread && x.spread > 2) || (x.con || []).some(c => c.includes('Basiseffekt'))) return ['Vorsicht', 'check'];
+  return ['Kaufbar', 'up'];
+}
+function dagegen(x) {
+  const w = [], t = tageBis(x.zahlenISO), tech = techAnteil();
+  if (imDepot(x.sym)) w.push(`Schon im Depot, durch die ETFs gerechnet rund ${nf(durchschau(x.sym), 0)} %`);
+  if (x.handel === 'nein') w.push('Nicht an LS Exchange gefunden. In der Trade-Republic-App per ISIN suchen, eventuell nur per Direktpreis in New York (2 €)');
+  if (x.handel == null) w.push('Handelbarkeit nicht geprüft. In der Trade-Republic-App per ISIN suchen');
+  if (t !== null && t >= 0 && t <= 14) w.push(`Zahlen am ${x.zahlen}: Kurs kann stark springen, besser danach kaufen`);
+  w.push(...(x.con || []));
+  if (x.spread && x.spread > 2) w.push(`Spread zuletzt ${nf(x.spread, 1)} %, Kauf und Verkauf kosten viel`);
+  if (x.vomHoch != null && x.vomHoch <= -30) w.push(`${nf(Math.abs(x.vomHoch), 0)} % unter dem Jahreshoch`);
+  if (x.tech && tech != null && tech > 50 && !imDepot(x.sym)) w.push(`Noch mehr Tech: dein Depot ist schon zu rund ${nf(tech, 0)} % Technologie`);
+  return w;
+}
+function datenlage(p) {
+  if (p.art === 'ETF') return { label: 'Kern', ton: 'neutral', text: `Breiter ETF. Hier zählt der Anteil am Depot, nicht die einzelne Woche.${p.sparplan ? ` Läuft im Sparplan mit ${eur(p.sparplan, 0)} im Monat.` : ''}` };
+  const g = [];
+  if (p.t3m != null) g.push(`3 Monate: ${sp(p.t3m)}`);
+  if (p.vomHoch != null) g.push(`Vom Jahreshoch: ${sp(p.vomHoch)}`);
+  if (p.zahlen) g.push(`Nächste Zahlen: ${p.zahlen}`);
+  if (p.t3m == null) return { label: 'Ohne Kurse', ton: 'neutral', gruende: g, text: 'Für diese Position liegen noch keine Kurse vor.' };
+  let label = 'Gemischt', ton = 'wait';
+  if (p.t3m > 5 && p.vomHoch > -10) { label = 'Rückenwind'; ton = 'up'; }
+  else if (p.t3m < -5 || p.vomHoch < -25) { label = 'Gegenwind'; ton = 'down'; }
+  return { label, ton, gruende: g };
+}
+function verkaufText(p, anteil) {
+  const erloes = p.wert * anteil, gewinn = p.gewinn * anteil;
+  const steuer = gewinn > 1000 ? (gewinn - 1000) * 0.26375 : 0;
+  if (gewinn >= 0) return `Du bekommst rund ${eur(erloes, 0)}. Darin stecken ${eur(gewinn, 0)} Gewinn. ${steuer > 0 ? `Über dem Sparer-Pauschbetrag von 1.000 € fallen rund ${eur(steuer, 0)} Steuer an.` : 'Das passt in den Sparer-Pauschbetrag von 1.000 €, sofern er noch frei ist. Zinsen zählen mit.'} Dazu 1 € Gebühr.`;
+  return `Du bekommst rund ${eur(erloes, 0)}. Darin stecken ${eur(Math.abs(gewinn), 0)} Verlust. Den kannst du mit Aktiengewinnen im selben Jahr verrechnen, zum Beispiel mit einem Teilverkauf von NVIDIA oder Microsoft.`;
+}
+const heuteKaufen = p => p.pct >= 0 ? '' : `Ehrliche Frage: Würdest du ${esc(p.name)} heute für ${eur(p.wert, 0)} neu kaufen? Wenn ja, halten. Wenn nein, ist Halten nur die Hoffnung, den Einstand zurückzubekommen. Der Einstand ist für die Zukunft egal.`;
+const alleKandidaten = () => APP ? APP.groessen.flatMap(g => (APP.tiers[g.key] || []).map(x => ({ ...x, groesse: g.key }))) : [];
+const findeKandidat = sym => alleKandidaten().find(x => x.sym === sym);
+function termine() {
+  const t = [];
+  alleKandidaten().forEach(x => { if (x.zahlenISO && !imDepot(x.sym)) t.push({ name: x.name, sym: x.sym, iso: x.zahlenISO, zahlen: x.zahlen, depot: false }); });
+  if (DEPOT) DEPOT.positionen.forEach(p => { if (p.zahlenISO) t.push({ name: p.name, sym: p.k, iso: p.zahlenISO, zahlen: p.zahlen, depot: true }); });
+  return t.filter(x => tageBis(x.iso) >= 0 && tageBis(x.iso) <= 45).sort((a, b) => a.iso.localeCompare(b.iso));
+}
+function hinsehen() {
+  if (!DEPOT) return [];
+  return DEPOT.positionen.map((p, i) => ({ ...p, i })).filter(p => p.art !== 'ETF' && (p.pct >= 40 || p.pct <= -30 || (tageBis(p.zahlenISO) !== null && tageBis(p.zahlenISO) >= 0 && tageBis(p.zahlenISO) <= 14)))
+    .map(p => ({ ...p, warum: tageBis(p.zahlenISO) !== null && tageBis(p.zahlenISO) >= 0 && tageBis(p.zahlenISO) <= 14 ? `Zahlen am ${p.zahlen}` : datenlage(p).label }));
+}
 
-  try {
-    const r = await fetch(CFG.data, {cache:'no-store'});
-    if (!r.ok) throw new Error(r.status);
-    D = await r.json();
-  } catch (e) {
-    $('#katalog').innerHTML =
-      `<div class="card"><h3 class="gold">Keine Daten geladen</h3>
-       <p class="muted">${esc(CFG.data)} nicht erreichbar (${esc(e.message)}).</p></div>`;
-    return;
+/* ───────── Gekauft ───────── */
+const ausstehend = () => lokal.get('sparplan-ausstehend', {});
+function gekauftOffen(sym) { return APP && (APP.gekauft || []).find(g => g.sym === sym && g.status === 'offen'); }
+function issueLink(sym, verkauft) {
+  return `https://github.com/${REPO}/issues/new?template=gekauft.yml&title=${encodeURIComponent(verkauft ? sym + ' verkauft' : sym)}`;
+}
+function vormerken(sym, art) { const a = ausstehend(); a[sym] = { art, am: new Date().toISOString().slice(0, 10) }; lokal.set('sparplan-ausstehend', a); }
+function aufraeumen() {
+  const a = ausstehend(); let geaendert = false;
+  for (const [sym, v] of Object.entries(a)) {
+    const da = (APP.gekauft || []).some(g => g.sym === sym && (v.art === 'kauf' ? g.status === 'offen' : g.status === 'verkauft'));
+    if (da || tageBis(v.am) < -7) { delete a[sym]; geaendert = true; }
   }
+  if (geaendert) lokal.set('sparplan-ausstehend', a);
+}
 
-  const fruehestes = (D.track_record || []).reduce((m, e) => {
-    const d = iso(e.date); return !m || d < m ? d : m; }, null);
-  if (fruehestes) await ladeFX(fruehestes);
+/* ───────── Grafik ───────── */
+function sparkPath(s, w, h, pad = 3) {
+  const v = s.map(p => p[1]), mn = Math.min(...v), mx = Math.max(...v);
+  return v.map((y, i) => [i * (w / (v.length - 1)), h - pad - ((y - mn) / ((mx - mn) || 1)) * (h - 2 * pad)]);
+}
+function spark(s) {
+  if (!s || s.length < 2) return '<span></span>';
+  const c = veraenderung(s) >= 0 ? 'var(--up)' : 'var(--down)';
+  return `<svg class="sp" viewBox="0 0 56 26" aria-hidden="true"><polyline fill="none" stroke="${c}" stroke-width="1.7" stroke-linejoin="round" points="${sparkPath(s, 56, 26).map(p => p.map(n => n.toFixed(1)).join(',')).join(' ')}"/></svg>`;
+}
+function chart(s, fmt = v => nf(v)) {
+  if (!s || s.length < 2) return '';
+  const W = 340, H = 180, R = 54, T = 10, Bm = 22, v = s.map(p => p[1]), mn = Math.min(...v), mx = Math.max(...v);
+  const x = i => i * ((W - R) / (v.length - 1)), y = a => T + (1 - (a - mn) / ((mx - mn) || 1)) * (H - T - Bm);
+  const c = v[v.length - 1] >= v[0] ? 'var(--up)' : 'var(--down)', id = 'g' + (++gid);
+  const line = v.map((a, i) => `${x(i).toFixed(1)},${y(a).toFixed(1)}`).join(' ');
+  const grid = [mx, (mn + mx) / 2, mn].map(g => `<line x1="0" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="var(--sc-highest)" stroke-dasharray="3 4"/><text x="${W}" y="${y(g) + 4}" fill="var(--on-var)" font-size="11" text-anchor="end">${fmt(g)}</text>`).join('');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Verlauf von ${s[0][0]} bis ${s[s.length - 1][0]}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:${c};stop-opacity:.32"/><stop offset="1" style="stop-color:${c};stop-opacity:0"/></linearGradient></defs>${grid}<polygon points="0,${H - Bm} ${line} ${x(v.length - 1)},${H - Bm}" fill="url(#${id})"/><polyline points="${line}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linejoin="round"/><circle cx="${x(v.length - 1)}" cy="${y(v[v.length - 1])}" r="4" fill="${c}"/><text x="0" y="${H - 4}" fill="var(--on-var)" font-size="11">${s[0][0]}</text><text x="${W - R}" y="${H - 4}" fill="var(--on-var)" font-size="11" text-anchor="end">${s[s.length - 1][0]}</text></svg>`;
+}
+const chip = (l, t) => `<span class="chip c-${t}">${l}</span>`;
+const tape = () => APP && APP.indizes ? `<div class="tape num" aria-label="Indizes, Schluss vom ${datum(APP.kurse_stand)}">${APP.indizes.map(i => `<span><b>${esc(i.name)}</b><span class="v">${nf(i.wert, i.d)}</span><span class="c ${i.chg >= 0 ? 'up' : 'down'}">${sp(i.chg, 2)}</span></span>`).join('')}</div>` : '';
 
-  /* Beide Zusatzdateien einzeln und fehlertolerant: eine fehlende Datei darf
-     die Seite nicht kippen, sie soll nur ihren Abschnitt leer lassen. */
-  try {
-    const rv = await fetch(CFG.virtuell, {cache:'no-store'});
-    if (rv.ok) VP = await rv.json();
-  } catch (e) { VP = null; }
-  try {
-    const rr = await fetch(CFG.register, {cache:'no-store'});
-    if (rr.ok) REG = await rr.json();
-  } catch (e) { REG = null; }
-  try {
-    const rb = await fetch(CFG.backtest, {cache:'no-store'});
-    if (rb.ok) BT = await rb.json();
-  } catch (e) { BT = null; }
+/* ───────── Kaufen ───────── */
+function kaufen() {
+  const h = handelstag(), T = termine(), a = ausstehend();
+  return `${tape()}<div class="display">Kaufen</div><p class="lead">Woche ${kalenderwoche()}, Top 3 je Größe aus dem Lauf vom ${datum(APP.lauf)}</p>
+  <div class="card pri"><div class="status">${h.titel}<small>${h.unter}</small></div>${timeline(h)}</div>
+  ${T.length ? `<h2>Quartalszahlen<small>nächste 45 Tage</small></h2><div class="carousel">${T.map(t => `<button class="mini ${t.depot ? 'dep' : ''}" ${t.depot ? `data-pos="${esc(t.sym)}"` : `data-k="${esc(t.sym)}"`}><div class="d num">${t.zahlen}</div><div class="n">${esc(t.name)}</div><div class="q">${t.depot ? 'im Depot' : 'Vorschlag'}</div></button>`).join('')}</div>` : ''}
+  ${APP.groessen.map(g => { const L = APP.tiers[g.key] || []; return `<h2>${g.titel}<small>${g.spanne}</small></h2>${L.length ? `<div class="group">${L.map(x => { const [l, t] = signal(x), ch = veraenderung(x.serie); return `<button class="item" data-k="${esc(x.sym)}"><span class="tk">${ini(x.sym)}</span><span style="min-width:0"><div class="t1">${esc(x.name)}</div>${chip(l, t)}${gekauftOffen(x.sym) ? chip('Gekauft', 'got') : a[x.sym] ? chip('Wird eingetragen', 'neutral') : ''}</span>${spark(x.serie)}<span class="rt"><div class="v1 num">${x.kursEUR != null ? eur(x.kursEUR) : ''}</div><div class="v2 num ${ch >= 0 ? 'up' : 'down'}">${ch != null ? sp(ch) : ''}</div></span></button>`; }).join('')}</div>` : '<p class="empty">Diese Woche kein brauchbarer Kandidat.</p>'}`; }).join('')}
+  <p class="fine">Prozent: Kursveränderung der letzten drei Monate. Kurse vom ${datum(APP.kurse_stand)}, Daten vom ${datum(APP.erstellt.slice(0, 10))}. Feiertage sind im Handelsfenster nicht berücksichtigt. Die Rangfolge ist ein Datenfilter und noch nicht belegt. Keine Anlageberatung.</p>`;
+}
 
-  renderKandidaten(); renderHistorie(); renderKante(); renderBacktest();
-  renderVirtuell(); depotLock();
-  puls();
-  beobachteGruppe($('#highlights'));
-  beobachteGruppe($('.security-grid'));
-  beobachteAlle(document, '.feature');
-  kippbarAlle(document, '.highlight, .security-card');
-  $$('.feature-media').forEach(parallax);
-  $$('.headline').forEach(headlineZerlegen);
-  fortschrittsfaden();
+/* ───────── Depot ───────── */
+const FARBEN = ['#8ab4ff', '#c0a8ff', '#6cd0d0', '#f0c36d', '#f5a3c0', '#9aa7bb', '#4a5160'];
+const KURZ = { 'S&P 500 Information Tech': 'Tech-ETF', 'Core MSCI World': 'World', 'Core S&P 500': 'S&P 500', 'Core MSCI EM IMI': 'Schwellenl.' };
+function depotGesperrt() {
+  return `${tape()}<div class="display">Depot</div><p class="lead">Dein Bestand liegt hier nur verschlüsselt.</p>
+  <div class="card lock"><div class="status">Depot entsperren<small>Einmal pro Gerät. Danach merkt sich dieses Gerät den Schlüssel, nicht das Passwort.</small></div>
+  <form id="unlock"><input type="password" id="pw" placeholder="Passwort" autocomplete="current-password" aria-label="Passwort">
+  <div class="row"><button class="btn" type="submit">Entsperren</button></div><div class="err" id="lockerr" role="alert"></div></form></div>
+  <p class="fine">Ohne Entsperren siehst du Kaufen und Archiv trotzdem vollständig. Nur „Im Depot“ und der Tech-Anteil fehlen dann.</p>`;
+}
+function depot() {
+  if (!DEPOT) return depotGesperrt();
+  if (DEPOT.alt) return `${tape()}<div class="display">Depot</div><div class="card"><div class="status">Altes Format<small>Die verschlüsselte Datei enthält nur Gewichte. Einmal am Mac neu verschlüsseln: python3 tools/encrypt_depot.py</small></div></div>`;
+  const P = DEPOT, H = hinsehen(), ps = P.positionen, d3 = veraenderung(P.serie), tech = techAnteil();
+  const top = ps.slice(0, 6), rest = Math.max(0, 100 - top.reduce((a, p) => a + p.gewicht, 0));
+  return `${tape()}<div class="display">Depot</div><p class="lead">Kurse vom ${datum(P.kurse_stand)}, Bestand vom ${datum(P.bestand_stand)}</p>
+  <div class="card"><div class="bigv num">${eur(P.wert)}</div><div class="v2 num ${P.seitKauf >= 0 ? 'up' : 'down'}" style="font-size:15px;margin-top:4px;white-space:normal">${sp(P.seitKauf)} seit Kauf, ${P.gewinn >= 0 ? '+' : '−'}${eur(Math.abs(P.gewinn), 0)}${d3 != null ? `, ${sp(d3)} in 3 Monaten` : ''}</div>
+  ${chart(P.serie, v => nf(v / 1000, 1) + 'k')}
+  <div class="stack" aria-hidden="true">${top.map((p, i) => `<span style="flex:${p.gewicht};background:${FARBEN[i]}"></span>`).join('')}<span style="flex:${rest};background:${FARBEN[6]}"></span></div>
+  <div class="legend num">${top.map((p, i) => `<span><i style="background:${FARBEN[i]}"></i>${esc(KURZ[p.name] || p.name)} ${nf(p.gewicht, 0)} %</span>`).join('')}<span><i style="background:${FARBEN[6]}"></i>Rest ${nf(rest, 0)} %</span></div>
+  ${tech != null ? `<p class="t2" style="margin-top:10px;white-space:normal">Technologie rund ${nf(tech, 0)} %. NVIDIA durchgerechnet ${nf(durchschau('NVDA'), 0)} %, Microsoft ${nf(durchschau('MSFT'), 0)} %.</p>` : ''}</div>
+  ${H.length ? `<h2>Diese Woche ansehen</h2><div class="carousel">${H.map(p => `<button class="mini ${p.pct < 0 ? 'neg' : ''}" style="flex-basis:150px" data-pos="${esc(p.k)}"><div class="d num ${p.pct >= 0 ? 'up' : ''}">${sp(p.pct, 0)}</div><div class="n">${esc(p.name)}</div><div class="q">${p.warum}</div></button>`).join('')}</div>` : ''}
+  <h2>Alle Positionen<small>seit Kauf</small></h2>
+  <div class="group">${ps.map(p => { const dl = datenlage(p); return `<button class="item" data-pos="${esc(p.k)}"><span class="tk">${p.art === 'ETF' ? 'ETF' : ini(p.k)}</span><span style="min-width:0"><div class="t1">${esc(p.name)}</div>${chip(dl.label, dl.ton)}</span>${spark(p.serie)}<span class="rt"><div class="v1 num">${eur(p.wert)}</div><div class="v2 num ${p.pct >= 0 ? 'up' : 'down'}">${sp(p.pct)}</div></span></button>`; }).join('')}</div>
+  ${(P.sparplan || []).length ? `<h2>Sparplan<small>${eur(P.sparplan.reduce((a, s) => a + s.rate_eur, 0), 0)} im Monat</small></h2><div class="group">${P.sparplan.map(s => `<div class="item static k3"><span class="tk">ETF</span><span style="min-width:0"><div class="t1">${esc(s.name)}</div><div class="t2">am ${s.tag}. jeden Monats</div></span><span class="rt v1 num">${eur(s.rate_eur, 0)}</span></div>`).join('')}</div>` : ''}
+  <p class="fine">${P.statisch ? 'Stand der Screenshots, noch ohne aktuelle Kurse. ' : `Wert aus dem Bestand vom ${datum(P.bestand_stand)} mit aktuellen Kursen und Wechselkursen${P.sparraten_seit_stand ? `, plus ${eur(P.sparraten_seit_stand, 0)} Sparraten seitdem` : ''}. `}Verlauf: heutiger Bestand mit den Kursen der letzten drei Monate. Datenlage heißt Trend und Abstand zum Hoch, keine Vorhersage. Weicht etwas von Trade Republic ab, schick einfach neue Screenshots.</p>
+  <p style="margin-top:14px"><button class="btn ghost" id="sperren">Auf diesem Gerät sperren</button></p>`;
+}
 
-  const ausHash = () => {
-    const h = location.hash.slice(1);
-    if (TABS.some(t => t[0] === h)) go(h);
+/* ───────── Archiv ───────── */
+function archiv() {
+  const A = APP.archiv, L = A.laeufe || [], chron = L.slice(0, 8).map((x, i) => ({ ...x, i })).reverse();
+  if (run >= L.length) run = 0;
+  const r = L[run], aus = ausstehend(), gek = APP.gekauft || [];
+  const P = Math.max(0, ...chron.map(x => x.median)), N = Math.min(0, ...chron.map(x => x.median)), RR = (P - N) || 1, AV = 92, z0 = 24 + (-N) / RR * AV;
+  const offen = Object.entries(aus).filter(([s]) => !gek.some(g => g.sym === s));
+  const zeile = (sym, name, unter, rechts, attrs = '') => `<${attrs ? 'button' : 'div'} class="item k3 ${attrs ? '' : 'static'}" ${attrs}><span class="tk">${ini(sym)}</span><span style="min-width:0"><div class="t1">${esc(name)}</div><div class="t2">${unter}</div></span><span class="rt">${rechts}</span></${attrs ? 'button' : 'div'}>`;
+  const pct = v => v == null ? '<span class="t2">Kurs folgt</span>' : `<span class="v1 num ${v >= 0 ? 'up' : 'down'}">${sp(v)}</span>`;
+  return `${tape()}<div class="display">Archiv</div><p class="lead">Wie sich die Vorschläge seit dem virtuellen Kauf entwickelt haben, in Euro.</p>
+  <div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span class="bigv num ${A.median >= 0 ? 'up' : 'down'}">${sp(A.median)}</span><span class="t2" style="font-size:14px">${A.plus} von ${A.n} im Plus</span></div><div class="t2">Median aller Vorschläge, je Lauf:</div>
+  <div class="bars" style="--n:${chron.length};--zero:${z0.toFixed(1)}px" role="group" aria-label="Median je Lauf, antippen zum Auswählen">${chron.map(x => { const hh = Math.abs(x.median) / RR * AV, pos = x.median >= 0, b = pos ? z0 : z0 - hh; return `<button data-run="${x.i}" aria-pressed="${x.i === run}" aria-label="${datum(x.d)}: Median ${sp(x.median)}"><span class="bar" style="bottom:${b.toFixed(1)}px;height:${Math.max(hh, 2).toFixed(1)}px;background:${pos ? 'var(--up)' : 'var(--down)'}"></span><span class="lbl num ${pos ? 'up' : 'down'}" style="bottom:${(pos ? z0 + hh + 4 : b - 18).toFixed(1)}px">${sp(x.median)}</span></button>`; }).join('')}</div>
+  <div class="bdates" style="--n:${chron.length}">${chron.map(x => `<span>${kurzDatum(x.d)}</span>`).join('')}</div></div>
+  <h2>Deine Käufe</h2>${gek.length || offen.length ? `<div class="group">${offen.map(([s, v]) => zeile(s, (findeKandidat(s) || {}).name || s, v.art === 'kauf' ? 'wird eingetragen, dauert ein bis zwei Minuten' : 'Verkauf wird eingetragen', '<span class="t2">gleich da</span>')).join('')}${gek.map(g => zeile(g.sym, g.name, g.status === 'verkauft' ? `${g.seit} bis ${g.bis}, verkauft` : `seit ${g.seit}${g.kaufkurs ? `, zu ${eur(g.kaufkurs)}` : ''}${g.betrag ? `, ${eur(g.betrag, 0)}` : ''}`, pct(g.pct), `data-g="${esc(g.sym)}"`)).join('')}</div>` : `<p class="empty">Noch nichts eingetragen. Öffne unter Kaufen einen Vorschlag und tippe auf „Als gekauft eintragen“.</p>`}
+  ${(APP.virtuell || []).length ? `<h2>Virtuelles Depot<small>je 1.000 €, nach Kosten</small></h2><div class="group">${APP.virtuell.map(v => zeile(v.sym, v.name, `seit ${v.seit}${v.quelle === 'trump' ? ', Trump-Komponente' : v.quelle === 'kauf' ? ', von Hand' : ''}${v.status !== 'offen' ? ', geschlossen' : ''}`, pct(v.pct))).join('')}</div>` : ''}
+  ${r ? `<h2>Vorschläge vom ${datum(r.d)}<small>${r.plus} von ${r.n} im Plus</small></h2><div class="group">${r.rows.map(p => zeile(p[0], A.namen[p[0]] || p[0], KORB[p[1]] || p[1], pct(p[3]))).join('')}</div>` : ''}
+  <h2>Pflege</h2><div class="card" style="margin-top:0">
+    <div class="linkzeile"><span>Trump hat zu einem Titel geraten</span><a href="https://github.com/${REPO}/issues/new?template=trump.yml" target="_blank" rel="noopener">Eintragen</a></div>
+    <div class="linkzeile"><span>Titel von Hand ins virtuelle Depot</span><a href="https://github.com/${REPO}/issues/new?template=kauf.yml" target="_blank" rel="noopener">Eintragen</a></div>
+    <div class="linkzeile"><span>Virtuelle Position schließen</span><a href="https://github.com/${REPO}/issues/new?template=verkauf.yml" target="_blank" rel="noopener">Eintragen</a></div>
+    <div class="linkzeile"><span>Alles sofort neu rechnen</span><a href="https://github.com/${REPO}/actions/workflows/virtuelles-depot.yml" target="_blank" rel="noopener">Wochenlauf starten</a></div></div>
+  <p class="fine">Seit dem Lauftag, ohne Gebühren. Ein Titel kann in mehreren Läufen stehen. Kurse vom ${datum(APP.kurse_stand)}.</p>`;
+}
+
+/* ───────── Detailblätter ───────── */
+const view = $('#view'), root = $('#root'), sheet = $('#sheet'), fab = $('#fabslot');
+function oeffne(html, fabHtml) {
+  last = document.activeElement; sheet.innerHTML = `<div class="handle"></div>` + html; sheet.scrollTop = 0;
+  root.classList.add('open'); fab.innerHTML = fabHtml || '';
+  sheet.querySelector('.xbtn').onclick = schliesse; sheet.querySelector('.xbtn').focus();
+  const f = fab.querySelector('[data-merk]'); if (f) f.addEventListener('click', () => { vormerken(f.dataset.merk, f.dataset.art); setTimeout(schliesse, 300); });
+}
+function schliesse() { root.classList.remove('open'); fab.innerHTML = ''; render(); if (last && last.focus) last.focus(); }
+$('#scrim').onclick = schliesse;
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && root.classList.contains('open')) schliesse(); });
+const kopf = (ober, titel) => `<div class="sh-top"><div><div class="t2">${ober}</div><div class="display" id="shT" style="font-size:32px;margin-top:2px">${esc(titel)}</div></div><button class="xbtn" aria-label="Schließen">✕</button></div>`;
+function gekauftFab(sym) {
+  const g = gekauftOffen(sym), a = ausstehend()[sym];
+  if (a) return `<span class="fab done">Wird eingetragen</span>`;
+  return g ? `<a class="fab" href="${issueLink(sym, true)}" target="_blank" rel="noopener" data-merk="${esc(sym)}" data-art="verkauf">Als verkauft eintragen</a>`
+    : `<a class="fab" href="${issueLink(sym, false)}" target="_blank" rel="noopener" data-merk="${esc(sym)}" data-art="kauf">Als gekauft eintragen</a>`;
+}
+function kandidat(sym) {
+  const x = findeKandidat(sym); if (!x) return gekauftBlatt(sym);
+  const [l, t] = signal(x), dg = dagegen(x), h = handelstag(), ch = veraenderung(x.serie), g = gekauftOffen(sym);
+  oeffne(`${kopf(`${esc(x.sym)}, ${esc(x.branche)}, Rang ${x.rang} von ${x.n}`, x.name)}
+  <div style="display:flex;gap:10px;align-items:baseline;margin-top:8px;flex-wrap:wrap"><span class="bigv num" style="font-size:30px">${x.kursEUR != null ? eur(x.kursEUR) : ''}</span>${ch != null ? `<span class="v2 num ${ch >= 0 ? 'up' : 'down'}" style="font-size:15px">${sp(ch)} seit ${x.serie[0][0]}</span>` : ''}${chip(l, t)}${g ? chip(`Gekauft am ${g.seit}`, 'got') : ''}</div>
+  ${chart(x.serie, v => nf(v, v < 100 ? 2 : 0) + ' $')}
+  <div class="box b-pro"><h3>Warum kaufen</h3><ul class="pts">${(x.pro.length ? x.pro : ['Kein einzelner Faktor sticht heraus, der Rang kommt aus der Summe.']).map(p => `<li><span>✓</span><span>${esc(p)}</span></li>`).join('')}</ul></div>
+  <div class="box b-con"><h3>Was dagegen spricht</h3><ul class="pts">${dg.length ? dg.map(p => `<li><span>!</span><span>${esc(p)}</span></li>`).join('') : '<li><span></span><span>Nichts Auffälliges in den Daten.</span></li>'}</ul></div>
+  <div class="box card pri" style="margin-top:10px"><h3>Wann kaufen</h3><div class="status" style="font-size:15px">${h.titel}<small>${h.unter}</small></div>${timeline(h)}<p style="margin-top:10px;opacity:.9">Limit-Order knapp über dem Briefkurs. Ab rund 500 € pro Kauf bleiben Gebühr und Spread zusammen unter 0,5 %.</p></div>
+  <div class="stats"><div class="st"><div class="l">Börsenwert</div><div class="v num">${nf(x.mcap, 1)} Mrd $</div></div><div class="st"><div class="l">Vom Jahreshoch</div><div class="v num">${sp(x.vomHoch)}</div></div><div class="st"><div class="l">Nächste Zahlen</div><div class="v num">${x.zahlen || 'offen'}</div></div><div class="st"><div class="l">Spread zuletzt</div><div class="v num">${x.spread ? nf(x.spread) + ' %' : 'offen'}</div></div><div class="st"><div class="l">Kurs in Dollar</div><div class="v num">${x.kursUSD != null ? usd(x.kursUSD) : 'offen'}</div></div><div class="st"><div class="l">Score</div><div class="v num">${nf(x.score, 1)}</div></div><div class="st wide"><div class="l">ISIN für die Suche in Trade Republic</div><div class="v num">${esc(x.isin || 'offen')}</div></div></div>
+  <p class="fine">„Als gekauft eintragen“ öffnet ein vorausgefülltes GitHub-Issue. Absenden, nach ein bis zwei Minuten steht der Kauf auf allen Geräten im Archiv. Keine Anlageberatung, Score und Rangfolge sind noch nicht belegt.</p>`, gekauftFab(sym));
+}
+function gekauftBlatt(sym) {
+  const g = (APP.gekauft || []).find(x => x.sym === sym); if (!g) return;
+  oeffne(`${kopf(esc(g.sym), g.name)}
+  <div class="stats" style="margin-top:12px"><div class="st"><div class="l">Gekauft am</div><div class="v num">${g.seit}</div></div><div class="st"><div class="l">Kaufkurs</div><div class="v num">${g.kaufkurs ? eur(g.kaufkurs) : 'folgt'}</div></div><div class="st"><div class="l">${g.status === 'verkauft' ? 'Ergebnis' : 'Seit Kauf'}</div><div class="v num ${g.pct >= 0 ? 'up' : 'down'}">${sp(g.pct)}</div></div><div class="st"><div class="l">Betrag</div><div class="v num">${g.betrag ? eur(g.betrag, 0) : 'offen'}</div></div></div>
+  <p class="fine">Der Titel steht diese Woche nicht in den Top 3. Ob du hältst, entscheidest du, die Datenlage findest du nach dem nächsten Lauf im Depot, sobald er dort auftaucht.</p>`, g.status === 'offen' ? gekauftFab(sym) : '');
+}
+function position(sym) {
+  if (!DEPOT) return;
+  const p = DEPOT.positionen.find(x => x.k === sym); if (!p) return;
+  const dl = datenlage(p), ds = durchschau(p.k); let ant = p.pct >= 0 ? .25 : 1;
+  const calc = () => `<div class="seg2" role="group" aria-label="Anteil">${[.25, .5, 1].map(a => `<button data-a="${a}" aria-pressed="${a === ant}">${a === 1 ? 'Alles' : nf(a * 100, 0) + ' %'}</button>`).join('')}</div><p>${verkaufText(p, ant)}</p>`;
+  const cur = p.waehrung === 'USD' ? ' $' : p.waehrung === 'HKD' ? ' HK$' : ' €';
+  oeffne(`${kopf(`${p.art}, ${nf(p.gewicht, 1)} % des Depots`, p.name)}
+  <div style="display:flex;gap:10px;align-items:baseline;margin-top:8px;flex-wrap:wrap"><span class="bigv num" style="font-size:30px">${eur(p.wert)}</span><span class="v2 num ${p.pct >= 0 ? 'up' : 'down'}" style="font-size:15px">${sp(p.pct)} seit Kauf, ${p.gewinn >= 0 ? '+' : '−'}${eur(Math.abs(p.gewinn), 0)}</span></div>
+  ${chart(p.serie, v => nf(v, v < 100 ? 2 : 0) + cur)}
+  <div class="box ${dl.ton === 'up' ? 'b-pro' : dl.ton === 'down' || dl.ton === 'wait' ? 'b-con' : ''}"><h3>Datenlage: ${dl.label}</h3>${dl.gruende && dl.gruende.length ? `<ul class="pts">${dl.gruende.map(g => `<li><span>•</span><span>${g}</span></li>`).join('')}</ul>` : `<p>${dl.text}</p>`}${p.art !== 'ETF' && ds && ds - p.gewicht > 0.5 ? `<p style="margin-top:6px">Durch deine ETFs gerechnet hältst du ${esc(p.name)} zu rund ${nf(ds, 0)} %.</p>` : ''}</div>
+  ${heuteKaufen(p) ? `<div class="box"><h3>Halten oder nicht?</h3><p>${heuteKaufen(p)}</p></div>` : ''}
+  ${p.art !== 'ETF' ? `<div class="box"><h3>${p.pct >= 0 ? 'Gewinn mitnehmen' : 'Verlust realisieren'}</h3><div id="calc">${calc()}</div></div>` : ''}
+  <div class="box"><h3>Wann verkaufen</h3><p>${zeitfenster(p.ex, 'verkauf')}</p></div>
+  ${p.isin ? `<div class="stats"><div class="st wide"><div class="l">ISIN</div><div class="v num">${esc(p.isin)}</div></div></div>` : ''}
+  <p class="fine">Keine Anlageberatung. Steuer vereinfacht mit 26,375 % ohne Kirchensteuer.</p>`);
+  const c = $('#calc'); if (c) c.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b) return; ant = +b.dataset.a; c.innerHTML = calc(); });
+}
+
+/* ───────── Ablauf ───────── */
+function render() {
+  if (!APP) {
+    view.innerHTML = `<div class="display">Sparplan</div><div class="card"><div class="status">Daten nicht erreichbar<small>Kein Netz oder data/app.json fehlt noch. Der Sonntagslauf legt sie an.</small></div><p style="margin-top:12px"><button class="btn" id="neu">Erneut laden</button></p></div>`;
+    $('#neu').onclick = start; return;
+  }
+  view.innerHTML = tab === 'kaufen' ? kaufen() : tab === 'depot' ? depot() : archiv();
+  document.querySelectorAll('.nav button').forEach(b => b.setAttribute('aria-current', b.dataset.tab === tab));
+  const f = $('#unlock');
+  if (f) f.onsubmit = async ev => {
+    ev.preventDefault(); const err = $('#lockerr'); err.textContent = 'Prüfe …';
+    try { await depotEntsperren($('#pw').value); render(); }
+    catch (e) { err.textContent = String(e.message) === 'fehlt' ? 'Noch kein verschlüsseltes Depot hinterlegt.' : 'Passwort passt nicht.'; }
   };
-  window.addEventListener('hashchange', ausHash);
-  ausHash();
-
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  const s = $('#sperren'); if (s) s.onclick = async () => { await IDB.clear(); DEPOT = null; render(); };
 }
+function zuTab(t, oben = true) {
+  tab = ['kaufen', 'depot', 'archiv'].includes(t) ? t : 'kaufen';
+  try { history.replaceState(null, '', '#' + tab); } catch (e) { /* egal */ }
+  render(); if (oben) scrollTo(0, 0);
+}
+document.querySelector('.nav').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) zuTab(b.dataset.tab); });
+view.addEventListener('click', e => {
+  const r = e.target.closest('[data-run]'); if (r) { run = +r.dataset.run; render(); return; }
+  const k = e.target.closest('[data-k]'); if (k) { kandidat(k.dataset.k); return; }
+  const g = e.target.closest('[data-g]'); if (g) { kandidat(g.dataset.g); return; }
+  const p = e.target.closest('[data-pos]'); if (p) position(p.dataset.pos);
+});
+async function start() {
+  try { const r = await fetch('data/app.json', { cache: 'no-cache' }); APP = r.ok ? await r.json() : null; } catch (e) { APP = null; }
+  if (APP) aufraeumen();
+  await depotAuto();
+  const h = (location.hash || '').slice(1);
+  zuTab(h === 'virtuell' ? 'archiv' : h, false);
+}
+// Zurück in die App geholt: frische Daten, damit Mac und iPhone gleich aussehen.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !root.classList.contains('open')) start(); });
 start();
-
-})();

@@ -1,0 +1,43 @@
+# Traegt einen echten Kauf oder Verkauf ein, sobald das Issue aus der App
+# abgeschickt ist. Dauert etwa eine Minute, danach zeigt die App ihn auf
+# allen Geraeten. Kein Sprachmodell, keine Claude-Credits.
+name: Gekauft eintragen
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: wochenlauf
+  cancel-in-progress: false
+
+jobs:
+  eintragen:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'gekauft')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Abhaengigkeiten
+        run: pip install --quiet yfinance
+      - name: Gekauft einlesen
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python tools/app_daten.py --gekauft
+      - name: Zurueckschreiben
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/app.json data/gekauft.json
+          if git diff --cached --quiet; then echo "Keine Aenderung."; exit 0; fi
+          git commit -m "Gekauft eingetragen"
+          git pull --rebase
+          git push

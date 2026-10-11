@@ -1,20 +1,19 @@
-# Woechentlicher Lauf: virtuelles Depot und Score-Register.
+# Woechentlicher Lauf: virtuelles Depot, Score-Register und die Daten der App.
 #
-# Laeuft auf GitHub, nicht auf Maiks Mac: beide Arbeitsumgebungen dort
-# erreichen keine Kursquelle, die Actions-Runner haben offenes Netz.
-# Oeffentliche Repos haben unbegrenzte Actions-Minuten, und in diesem Lauf
-# steckt kein Sprachmodell. Er kostet also weder Geld noch Claude-Credits.
+# Laeuft auf GitHub, nicht auf Maiks Mac. Oeffentliche Repos haben unbegrenzte
+# Actions-Minuten, und in diesem Lauf steckt kein Sprachmodell. Er kostet also
+# weder Geld noch Claude-Credits.
 name: Wochenlauf
 
 on:
   schedule:
-    # Sonntags 17:30 UTC, also 19:30 deutscher Sommerzeit. Cron in Actions
-    # laeuft immer in UTC und kann sich um einige Minuten verspaeten.
+    # Sonntags 17:30 UTC, also 19:30 deutscher Sommerzeit und 18:30 im Winter.
+    # Cron in Actions laeuft immer in UTC und kann sich um einige Minuten verspaeten.
     - cron: "30 17 * * 0"
   workflow_dispatch:        # Knopf "Run workflow" fuer sofort
 
 permissions:
-  contents: write           # schreibt die beiden Datendateien zurueck
+  contents: write           # schreibt die Datendateien zurueck
   issues: write             # schliesst die eingelesenen Issues
 
 concurrency:
@@ -32,9 +31,9 @@ jobs:
           python-version: "3.12"
 
       # yfinance ist die erste Kursquelle, Stooq der Rueckfall im Code selbst.
-      # Faellt die Installation aus, laeuft der Job trotzdem weiter.
+      # cryptography braucht nur das verschluesselte Depot.
       - name: Abhaengigkeiten
-        run: pip install --quiet yfinance
+        run: pip install --quiet yfinance cryptography
 
       - name: Selbsttests
         run: |
@@ -52,16 +51,28 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python tools/virtuell.py
 
+      # Top 3 je Groesse, Archiv in Euro, Gekauft-Liste und dein Depot mit
+      # aktuellen Kursen. Ohne Secret DEPOT_PASSWORT bleibt das Depot stehen,
+      # der Rest laeuft trotzdem.
+      - name: App-Daten
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DEPOT_PASSWORT: ${{ secrets.DEPOT_PASSWORT }}
+        run: python tools/app_daten.py
+
       - name: Zurueckschreiben
         run: |
           # Erst vormerken, dann gegen den Index pruefen: git diff allein
           # uebersieht eine Datei, die es vorher noch nicht gab.
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/virtual_portfolio.json data/score_register.json
+          git add data/virtual_portfolio.json data/score_register.json data/app.json data/gekauft.json
+          if [ -f data/depot_live.enc ]; then git add data/depot_live.enc; fi
           if git diff --cached --quiet; then
             echo "Keine Aenderung."
             exit 0
           fi
-          git commit -m "Wochenlauf: Depot und Score-Register aktualisiert"
+          git commit -m "Wochenlauf: Depot, Score-Register und App-Daten aktualisiert"
+          git pull --rebase
           git push

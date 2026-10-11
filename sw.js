@@ -1,9 +1,8 @@
-/* Hülle aus dem Cache, Daten immer frisch. Bei jedem Deploy V hochzählen. */
-const V = 'sparplan-v15';
-const HUELLE = ['./', './index.html', './assets/style.css', './assets/app.js',
-                './assets/holo-core.js', './assets/szene.js', './manifest.webmanifest',
-                './assets/img/methodik-kandidaten.jpg', './assets/img/methodik-verlauf.jpg',
-                './assets/img/sicherheit-depot.jpg'];
+/* Netz zuerst, Cache nur als Rettung ohne Empfang.
+   So zeigt das iPhone nach jedem Push sofort den neuen Stand, ohne dass hier
+   jemand eine Versionsnummer hochzählen muss. */
+const V = 'sparplan-v20';
+const HUELLE = ['./', './index.html', './assets/style.css', './assets/app.js', './manifest.webmanifest', './assets/icon-192.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(HUELLE)).then(() => self.skipWaiting()));
@@ -18,17 +17,9 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.origin !== location.origin) return;
-
-  // Daten: Netz zuerst, Cache nur als Rettung bei Funkloch.
-  if (u.pathname.includes('/data/')) {
-    e.respondWith(
-      fetch(e.request)
-        .then(r => { const c = r.clone(); caches.open(V).then(x => x.put(e.request, c)); return r; })
-        .catch(() => caches.match(e.request))
-    );
-    return;
-  }
-
-  // Hülle: Cache zuerst, im Hintergrund erneuern.
-  e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request)));
+  e.respondWith(
+    fetch(e.request, { cache: 'no-cache' })
+      .then(r => { if (r.ok) { const c = r.clone(); caches.open(V).then(x => x.put(e.request, c)); } return r; })
+      .catch(() => caches.match(e.request).then(hit => hit || caches.match('./index.html')))
+  );
 });

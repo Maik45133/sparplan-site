@@ -1,0 +1,27 @@
+name: Gekauft oder verkauft (aus der App)
+description: Einen echten Kauf oder Verkauf eintragen. Die App füllt den Titel aus, du tippst nur Absenden.
+title: "TICKER"
+labels: ["gekauft"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Titel ist der Ticker, zum Beispiel `MXL`. Für einen Verkauf `MXL verkauft`.
+        Alle Felder sind freiwillig. Ohne Kurs nimmt der Lauf den Schlusskurs des Tages.
+  - type: input
+    id: kurs
+    attributes:
+      label: Kurs in Euro
+      description: Dein Kauf- oder Verkaufskurs aus Trade Republic.
+      placeholder: "85,81"
+  - type: input
+    id: betrag
+    attributes:
+      label: Betrag in Euro
+      placeholder: "500"
+  - type: input
+    id: datum
+    attributes:
+      label: Datum
+      description: Nur wenn nicht heute. Format JJJJ-MM-TT.
+      placeholder: "2026-10-12"

@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-11T21:02:21+00:00",
+  "updated_at": "2026-10-18T19:32:45+00:00",
   "einsatz_eur": 1000.0,
   "positionen": [
     {
@@ -108,27 +108,27 @@
       "fehler": null,
       "entry_price_usd": 1581.8199,
       "fx_at_entry": 0.89238,
-      "fx_now": 0.89238,
+      "fx_now": 0.88865,
       "einsatz_eur": 1000.0,
       "kosten_pct_je_seite": 1.25,
       "stueck": 0.699568,
-      "price_now_usd": 1581.8199,
-      "kurs_stand": "2026-10-09",
-      "brutto_wert_eur": 987.5,
-      "wert_eur": 975.16,
-      "kosten_eur": 24.84,
-      "gewinn_eur": -24.84,
-      "rendite_pct": -2.48,
-      "kurs_pct": 0.0,
-      "brutto_rendite_pct": -1.25,
-      "waehrungseffekt_pct": -1.25,
-      "kostenlast_pct": -1.23,
+      "price_now_usd": 1299.3,
+      "kurs_stand": "2026-10-16",
+      "brutto_wert_eur": 807.74,
+      "wert_eur": 797.64,
+      "kosten_eur": 22.6,
+      "gewinn_eur": -202.36,
+      "rendite_pct": -20.24,
+      "kurs_pct": -17.86,
+      "brutto_rendite_pct": -19.23,
+      "waehrungseffekt_pct": -1.37,
+      "kostenlast_pct": -1.01,
       "benchmark_at_entry": 7811.54,
-      "benchmark_now": 7811.54,
-      "benchmark_pct": 0.0,
-      "excess_pct": 0.0,
-      "excess_netto_pct": -2.48,
-      "tage": 0
+      "benchmark_now": 7659.4399,
+      "benchmark_pct": -1.95,
+      "excess_pct": -15.91,
+      "excess_netto_pct": -17.95,
+      "tage": 7
     }
   ],
   "summe": {
@@ -136,25 +136,25 @@
       "anzahl": 3,
       "offen": 1,
       "einsatz_eur": 3000.0,
-      "wert_eur": 3280.95,
-      "gewinn_eur": 280.95,
-      "rendite_pct": 9.37,
+      "wert_eur": 3103.43,
+      "gewinn_eur": 103.43,
+      "rendite_pct": 3.45,
       "median_excess_pct": 4.78,
       "besser_als_benchmark": 2,
       "mit_benchmark": 3,
-      "kosten_eur": 79.03
+      "kosten_eur": 76.79
     },
     "score": {
       "anzahl": 3,
       "offen": 1,
       "einsatz_eur": 3000.0,
-      "wert_eur": 3280.95,
-      "gewinn_eur": 280.95,
-      "rendite_pct": 9.37,
+      "wert_eur": 3103.43,
+      "gewinn_eur": 103.43,
+      "rendite_pct": 3.45,
       "median_excess_pct": 4.78,
       "besser_als_benchmark": 2,
       "mit_benchmark": 3,
-      "kosten_eur": 79.03
+      "kosten_eur": 76.79
     },
     "trump": {
       "anzahl": 0,
@@ -170,7 +170,7 @@
     }
   },
   "hinweise": [
-    "GOOGL uebersprungen, 4300.8 Mrd ueber der Kaufgrenze (1000 Mrd), Korb frueh."
+    "GOOGL uebersprungen, 4165.4 Mrd ueber der Kaufgrenze (1000 Mrd), Korb frueh."
   ],
   "benchmark_namen": {
     "IWO": "Russell 2000 Growth",

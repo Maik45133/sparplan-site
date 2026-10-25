@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-18T19:32:45+00:00",
+  "updated_at": "2026-10-25T19:52:35+00:00",
   "einsatz_eur": 1000.0,
   "positionen": [
     {
@@ -103,7 +103,7 @@
       "benchmark_symbol": "^GSPC",
       "branche": "Computer Hardware",
       "score_at_entry": 84.8,
-      "status": "offen",
+      "status": "geschlossen",
       "veraltet": false,
       "fehler": null,
       "entry_price_usd": 1581.8199,
@@ -128,13 +128,17 @@
       "benchmark_pct": -1.95,
       "excess_pct": -15.91,
       "excess_netto_pct": -17.95,
-      "tage": 7
+      "tage": 5,
+      "closed": "2026-10-16",
+      "schliessgrund": "Volatilitaetsstop",
+      "stop_kurs": 1362.9299,
+      "hoechster_kurs": 1487.33
     }
   ],
   "summe": {
     "gesamt": {
       "anzahl": 3,
-      "offen": 1,
+      "offen": 0,
       "einsatz_eur": 3000.0,
       "wert_eur": 3103.43,
       "gewinn_eur": 103.43,
@@ -146,7 +150,7 @@
     },
     "score": {
       "anzahl": 3,
-      "offen": 1,
+      "offen": 0,
       "einsatz_eur": 3000.0,
       "wert_eur": 3103.43,
       "gewinn_eur": 103.43,
@@ -170,7 +174,8 @@
     }
   },
   "hinweise": [
-    "GOOGL uebersprungen, 4165.4 Mrd ueber der Kaufgrenze (1000 Mrd), Korb frueh."
+    "GOOGL uebersprungen, 4165.4 Mrd ueber der Kaufgrenze (1000 Mrd), Korb frueh.",
+    "SNDK am 2026-10-16 durch den Volatilitaetsstop geschlossen, Kurs 1299.30 unter Stop 1362.93."
   ],
   "benchmark_namen": {
     "IWO": "Russell 2000 Growth",

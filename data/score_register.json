@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-25T19:52:32+00:00",
+  "updated_at": "2026-11-01T21:20:14+00:00",
   "horizonte": [
     30,
     60,
@@ -3391,7 +3391,46 @@
             }
           }
         },
-        "60": null,
+        "60": {
+          "stichtag": "2026-10-28",
+          "n": 69,
+          "fehlend": 0,
+          "ic": 0.084,
+          "terzil_abstand": 4.341,
+          "median_ueberrendite": 2.25,
+          "ic_komponenten": {
+            "dilution": {
+              "n": 69,
+              "ic": 0.112,
+              "terzil_abstand": 4.995
+            },
+            "fcf_trend": {
+              "n": 66,
+              "ic": 0.047,
+              "terzil_abstand": 6.287
+            },
+            "growth_acceleration": {
+              "n": 56,
+              "ic": 0.009,
+              "terzil_abstand": 0.403
+            },
+            "insider_cluster": {
+              "n": 69,
+              "ic": null,
+              "terzil_abstand": -14.206
+            },
+            "margin_trend": {
+              "n": 67,
+              "ic": -0.093,
+              "terzil_abstand": 0.699
+            },
+            "revision_momentum": {
+              "n": 69,
+              "ic": 0.111,
+              "terzil_abstand": 2.941
+            }
+          }
+        },
         "90": null
       }
     },
@@ -4604,7 +4643,46 @@
             }
           }
         },
-        "60": null,
+        "60": {
+          "stichtag": "2026-10-29",
+          "n": 69,
+          "fehlend": 0,
+          "ic": 0.004,
+          "terzil_abstand": 0.083,
+          "median_ueberrendite": 0.58,
+          "ic_komponenten": {
+            "dilution": {
+              "n": 69,
+              "ic": 0.155,
+              "terzil_abstand": 5.922
+            },
+            "fcf_trend": {
+              "n": 66,
+              "ic": -0.021,
+              "terzil_abstand": 3.22
+            },
+            "growth_acceleration": {
+              "n": 56,
+              "ic": -0.021,
+              "terzil_abstand": -2.147
+            },
+            "insider_cluster": {
+              "n": 69,
+              "ic": null,
+              "terzil_abstand": -11.687
+            },
+            "margin_trend": {
+              "n": 67,
+              "ic": -0.089,
+              "terzil_abstand": 0.421
+            },
+            "revision_momentum": {
+              "n": 69,
+              "ic": 0.038,
+              "terzil_abstand": -1.272
+            }
+          }
+        },
         "90": null
       }
     },
@@ -7245,7 +7323,56 @@
         }
       ],
       "auswertung": {
-        "30": null,
+        "30": {
+          "stichtag": "2026-10-26",
+          "n": 68,
+          "fehlend": 0,
+          "ic": -0.073,
+          "terzil_abstand": -3.44,
+          "median_ueberrendite": -3.98,
+          "ic_komponenten": {
+            "dilution": {
+              "n": 68,
+              "ic": 0.218,
+              "terzil_abstand": 8.453
+            },
+            "earnings_drift": {
+              "n": 60,
+              "ic": 0.297,
+              "terzil_abstand": 10.49
+            },
+            "fcf_trend": {
+              "n": 66,
+              "ic": 0.009,
+              "terzil_abstand": -0.042
+            },
+            "growth_acceleration": {
+              "n": 56,
+              "ic": -0.164,
+              "terzil_abstand": -3.67
+            },
+            "insider_cluster": {
+              "n": 68,
+              "ic": -0.276,
+              "terzil_abstand": -7.53
+            },
+            "margin_trend": {
+              "n": 66,
+              "ic": -0.147,
+              "terzil_abstand": -5.457
+            },
+            "momentum_12_1": {
+              "n": 65,
+              "ic": -0.372,
+              "terzil_abstand": -10.829
+            },
+            "revision_momentum": {
+              "n": 68,
+              "ic": 0.067,
+              "terzil_abstand": -0.204
+            }
+          }
+        },
         "60": null,
         "90": null
       }
@@ -11156,51 +11283,56 @@
   ],
   "zusammenfassung": {
     "30": {
-      "laeufe": 1,
-      "wochen": 1,
-      "ic_mittel": -0.001,
-      "ic_median": -0.001,
+      "laeufe": 2,
+      "wochen": 2,
+      "ic_mittel": -0.037,
+      "ic_median": -0.037,
       "t": null,
       "positive_wochen": 0,
-      "terzil_abstand_mittel": -1.45,
+      "terzil_abstand_mittel": -2.44,
       "belastbar": false,
-      "wochen_fehlend": 11,
+      "wochen_fehlend": 10,
       "fassung": "8k-e6fd97",
       "laeufe_andere_fassung": 5,
       "komponenten": {
         "dilution": {
-          "wochen": 1,
-          "ic_mittel": 0.257,
+          "wochen": 2,
+          "ic_mittel": 0.237,
           "t": null
         },
         "earnings_drift": {
-          "wochen": 1,
-          "ic_mittel": 0.164,
+          "wochen": 2,
+          "ic_mittel": 0.23,
           "t": null
         },
         "fcf_trend": {
-          "wochen": 1,
-          "ic_mittel": 0.112,
+          "wochen": 2,
+          "ic_mittel": 0.06,
           "t": null
         },
         "growth_acceleration": {
+          "wochen": 2,
+          "ic_mittel": -0.147,
+          "t": null
+        },
+        "insider_cluster": {
           "wochen": 1,
-          "ic_mittel": -0.129,
+          "ic_mittel": -0.276,
           "t": null
         },
         "margin_trend": {
-          "wochen": 1,
-          "ic_mittel": -0.145,
+          "wochen": 2,
+          "ic_mittel": -0.146,
           "t": null
         },
         "momentum_12_1": {
-          "wochen": 1,
-          "ic_mittel": -0.279,
+          "wochen": 2,
+          "ic_mittel": -0.326,
           "t": null
         },
         "revision_momentum": {
-          "wochen": 1,
-          "ic_mittel": 0.195,
+          "wochen": 2,
+          "ic_mittel": 0.131,
           "t": null
         }
       }

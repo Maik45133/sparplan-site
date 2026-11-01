@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-25T19:52:35+00:00",
+  "updated_at": "2026-11-01T21:20:17+00:00",
   "einsatz_eur": 1000.0,
   "positionen": [
     {
@@ -174,8 +174,7 @@
     }
   },
   "hinweise": [
-    "GOOGL uebersprungen, 4165.4 Mrd ueber der Kaufgrenze (1000 Mrd), Korb frueh.",
-    "SNDK am 2026-10-16 durch den Volatilitaetsstop geschlossen, Kurs 1299.30 unter Stop 1362.93."
+    "GOOGL uebersprungen, 4165.4 Mrd ueber der Kaufgrenze (1000 Mrd), Korb frueh."
   ],
   "benchmark_namen": {
     "IWO": "Russell 2000 Growth",
